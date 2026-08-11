@@ -9,12 +9,17 @@
 
 pub mod config;
 pub mod error;
+pub mod middleware;
 pub mod proxy;
 pub mod router;
 pub mod sse;
 
 pub use config::ProxyConfig;
 pub use error::ProxyError;
+pub use middleware::{
+    LatencyTrackingLayer, RequestIdLayer, TimeoutLayer, TracingLayer, X_REQUEST_ID,
+    X_RESPONSE_TIME_US,
+};
 pub use proxy::McpProxy;
 pub use router::ProxyRouter;
 pub use sse::{apply_sse_headers, format_sse_event, is_sse_request};
