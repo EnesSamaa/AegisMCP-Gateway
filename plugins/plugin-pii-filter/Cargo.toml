@@ -1,0 +1,17 @@
+[package]
+name        = "plugin-pii-filter"
+version     = "0.1.0"
+edition     = "2021"
+description = "WASI 0.2 PII Filter Guardrail Plugin for AegisMCP-Gateway"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/EnesSamaa/AegisMCP-Gateway"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+wit-bindgen = { workspace = true }
+regex       = "1.10"
