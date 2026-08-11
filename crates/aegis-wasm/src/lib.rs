@@ -14,6 +14,7 @@ pub mod bindings;
 pub mod engine;
 pub mod error;
 pub mod mapping;
+pub mod store;
 
 pub use bindings::aegis::guardrail::types as wit_types;
 pub use engine::WasmEngine;
@@ -22,3 +23,4 @@ pub use mapping::{
     build_inspection_context, parse_guardrail_result, HostDecision, HostPolicySummary,
     HostRiskRating,
 };
+pub use store::{AegisStoreCtx, DEFAULT_MAX_MEMORY_BYTES};
