@@ -1,0 +1,28 @@
+[package]
+name        = "aegis-guardrails"
+version     = "0.1.0"
+edition     = "2021"
+description = "Content-inspection engine: regex matchers, semantic filters, and rule definitions for AegisMCP-Gateway"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/EnesSamaa/AegisMCP-Gateway"
+keywords    = ["guardrails", "inspection", "regex", "security", "filter"]
+categories  = ["network-programming", "text-processing"]
+
+[lints]
+workspace = true
+
+[dependencies]
+aegis-core = { path = "../aegis-core" }
+
+serde      = { workspace = true }
+serde_json = { workspace = true }
+tracing    = { workspace = true }
+thiserror  = { workspace = true }
+anyhow     = { workspace = true }
+bytes      = { workspace = true }
+
+# Regex engine — compiled with Unicode disabled for perf where possible
+regex = "1"
+
+[dev-dependencies]
+tokio = { workspace = true }

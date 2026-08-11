@@ -1,0 +1,38 @@
+# Rust build artefacts
+/target/
+**/*.rs.bk
+
+# Cargo lock is committed for binary crates, kept for reproducibility
+# Cargo.lock   # keep (binary workspace)
+
+# IDE / editor artefacts
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Environment / secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.crt
+
+# Benchmark artefacts
+criterion/
+
+# Profiling
+perf.data
+perf.data.old
+flamegraph.svg
+*.folded
+
+# Temporary files
+*.tmp
+*.bak
+*.orig

@@ -1,0 +1,29 @@
+# AegisMCP-Gateway — Clippy configuration
+# Fine-grained knobs that cannot be expressed in [workspace.lints.clippy] in Cargo.toml
+
+# Cognitive complexity threshold — functions exceeding this emit a warning
+cognitive-complexity-threshold = 15
+
+# Suppress "too_many_arguments" for functions with ≤ 8 params (gateway handlers legitimately need many)
+too-many-arguments-threshold = 8
+
+# Avoid flagging literals with fewer than this many digits as needing underscores
+literal-representation-threshold = 10000
+
+# Maximum lines in a single function before `clippy::too_many_lines` fires
+too-many-lines-threshold = 100
+
+# Allow single-char binding names in short closures / iterators
+single-char-binding-names-threshold = 4
+
+# Minimum number of arms before `match` is required to have a wildcard
+min-ident-chars-threshold = 1
+
+# Vec size hint for clippy::expect_used  (we intentionally use expect in tests only)
+vec-box-size-threshold = 4096
+
+# Require type annotations on all public items' return types
+avoid-breaking-exported-api = true
+
+# Enforce standard separator in large numeric literals
+enforce-iter-loop-reborrow = false

@@ -1,0 +1,29 @@
+[package]
+name        = "aegis-proof"
+version     = "0.1.0"
+edition     = "2021"
+description = "Cryptographic hashing and Merkle-tree proof infrastructure for AegisMCP-Gateway audit trails"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/EnesSamaa/AegisMCP-Gateway"
+keywords    = ["merkle", "proof", "cryptography", "audit", "hashing"]
+categories  = ["cryptography", "network-programming"]
+
+[lints]
+workspace = true
+
+[dependencies]
+aegis-core = { path = "../aegis-core" }
+
+serde      = { workspace = true }
+serde_json = { workspace = true }
+tracing    = { workspace = true }
+thiserror  = { workspace = true }
+anyhow     = { workspace = true }
+bytes      = { workspace = true }
+
+# Cryptographic primitives
+sha2   = "0.10"
+hex    = "0.4"
+
+[dev-dependencies]
+tokio = { workspace = true }
