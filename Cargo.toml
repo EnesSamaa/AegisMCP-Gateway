@@ -17,7 +17,7 @@ tokio          = { version = "1.53", features = ["full"] }
 
 # HTTP layer (hyper v1 ecosystem)
 hyper          = { version = "1.11", features = ["client", "server", "http1", "http2"] }
-hyper-util     = { version = "0.1",  features = ["tokio", "client", "client-legacy", "server"] }
+hyper-util     = { version = "0.1",  features = ["tokio", "client", "client-legacy", "server", "http1", "http2"] }
 http-body-util = { version = "0.1" }
 
 # WASM runtime
