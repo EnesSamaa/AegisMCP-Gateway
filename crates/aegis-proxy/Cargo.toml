@@ -12,6 +12,10 @@ categories  = ["network-programming", "web-programming"]
 name = "aegis-gateway"
 path = "src/main.rs"
 
+[[bench]]
+name    = "proxy_throughput"
+harness = false
+
 [lints]
 workspace = true
 
@@ -35,5 +39,6 @@ anyhow         = { workspace = true }
 bytes          = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
-uuid  = { workspace = true }
+tokio     = { workspace = true }
+uuid      = { workspace = true }
+criterion = { workspace = true }
