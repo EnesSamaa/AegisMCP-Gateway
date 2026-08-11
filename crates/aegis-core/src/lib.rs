@@ -1,20 +1,10 @@
 //! # aegis-core
 //!
-//! Core data structures, types, and error definitions for the AegisMCP-Gateway.
+//! Core data structures, types, error definitions, and JSON-RPC / MCP protocol primitives
+//! for the AegisMCP-Gateway.
 //!
-//! This crate defines the canonical JSON-RPC 2.0 / MCP protocol primitives that every
-//! other crate in the workspace depends on.  It purposefully has **no I/O**, **no async
-//! runtime**, and **no network** dependencies — it is a pure data-model library.
-//!
-//! ## Module organisation
-//!
-//! ```text
-//! aegis-core
-//! ├── error   — unified error type hierarchy via `thiserror`
-//! ├── jsonrpc — JSON-RPC 2.0 request / response / notification types
-//! ├── mcp     — Model Context Protocol message extensions
-//! └── types   — shared primitive type aliases and newtypes
-//! ```
+//! This crate defines the canonical JSON-RPC 2.0 and Model Context Protocol (MCP) data models
+//! used throughout the workspace. It is pure data-model library with no async or network runtime.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
@@ -26,9 +16,16 @@ pub mod jsonrpc;
 pub mod mcp;
 pub mod types;
 
-// ---------------------------------------------------------------------------
-// Re-export the most-used items at crate root for ergonomics
-// ---------------------------------------------------------------------------
-pub use error::{AegisError, Result};
-pub use jsonrpc::{JsonRpcId, JsonRpcRequest, JsonRpcResponse};
-pub use types::{RequestId, SessionId};
+// Re-exports for top-level ergonomics
+pub use error::{AegisCoreError, AegisError, McpError, Result};
+pub use jsonrpc::{
+    JsonRpcError, JsonRpcId, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
+    JSONRPC_INTERNAL_ERROR, JSONRPC_INVALID_PARAMS, JSONRPC_INVALID_REQUEST,
+    JSONRPC_METHOD_NOT_FOUND, JSONRPC_PARSE_ERROR,
+};
+pub use mcp::{
+    ClientCapabilities, ClientInfo, InitializeParams, InitializeResult, McpCapabilities,
+    ServerCapabilities, ServerInfo, ToolCall, ToolContent, ToolDefinition, ToolInputSchema,
+    ToolResult, MCP_PROTOCOL_VERSION,
+};
+pub use types::{AgentIdentity, McpSessionContext, RequestId, SessionId};

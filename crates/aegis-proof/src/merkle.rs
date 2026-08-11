@@ -1,8 +1,4 @@
 //! Merkle tree and inclusion proof types.
-//!
-//! This is an append-only binary Merkle tree.  Leaves are SHA-256 digests of
-//! audit-log entries.  The root digest can be used as a compact commitment to
-//! the entire audit log history.
 
 use crate::{error::ProofError, hash::Sha256Digest};
 
@@ -19,7 +15,7 @@ pub struct MerkleTree {
 impl MerkleTree {
     /// Create a new, empty Merkle tree.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { leaves: Vec::new() }
     }
 
@@ -35,13 +31,13 @@ impl MerkleTree {
 
     /// Returns the number of leaves in the tree.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.leaves.len()
     }
 
     /// Returns `true` if the tree has no leaves.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.leaves.is_empty()
     }
 
@@ -111,7 +107,7 @@ impl MerkleProof {
         let mut idx = self.index;
 
         for sibling in &self.siblings {
-            current = if idx % 2 == 0 {
+            current = if idx.is_multiple_of(2) {
                 Sha256Digest::combine(&current, sibling)
             } else {
                 Sha256Digest::combine(sibling, &current)
@@ -138,7 +134,6 @@ fn compute_root(leaves: &[Sha256Digest]) -> Sha256Digest {
             if chunk.len() == 2 {
                 Sha256Digest::combine(&chunk[0], &chunk[1])
             } else {
-                // Odd leaf: duplicate it (standard approach).
                 Sha256Digest::combine(&chunk[0], &chunk[0])
             }
         })
@@ -166,11 +161,9 @@ fn generate_siblings(leaves: &[Sha256Digest], index: usize) -> Vec<Sha256Digest>
     let mut idx = index;
 
     while layer.len() > 1 {
-        let sibling_idx = if idx % 2 == 0 {
-            // Right sibling.
+        let sibling_idx = if idx.is_multiple_of(2) {
             if idx + 1 < layer.len() { idx + 1 } else { idx }
         } else {
-            // Left sibling.
             idx - 1
         };
         siblings.push(layer[sibling_idx]);
@@ -190,9 +183,6 @@ fn generate_siblings(leaves: &[Sha256Digest], index: usize) -> Vec<Sha256Digest>
     siblings
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;

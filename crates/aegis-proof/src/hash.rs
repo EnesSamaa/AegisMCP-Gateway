@@ -34,13 +34,13 @@ impl Sha256Digest {
 
     /// Return the digest as a lowercase hex string.
     #[must_use]
-    pub fn to_hex(&self) -> String {
+    pub fn to_hex(self) -> String {
         hex::encode(self.0)
     }
 
     /// Return the raw byte array.
     #[must_use]
-    pub fn as_bytes(&self) -> &[u8; 32] {
+    pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
 }
@@ -51,9 +51,6 @@ impl std::fmt::Display for Sha256Digest {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,8 +64,6 @@ mod tests {
 
     #[test]
     fn known_sha256_vector() {
-        // SHA-256("abc") = ba7816bf8f01cfea414140de5dae2ec73b00361bbef0469f490816218f9b29
-        //                   (well-known test vector)
         let digest = Sha256Digest::of(b"abc");
         assert!(digest.to_hex().starts_with("ba7816bf"));
     }

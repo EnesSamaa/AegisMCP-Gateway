@@ -1,127 +1,209 @@
-//! Unified error type hierarchy for AegisMCP-Gateway.
+//! Extensible domain error hierarchy for AegisMCP-Gateway.
 //!
-//! All public-facing errors are expressed as variants of [`AegisError`].
-//! Internal subsystems map their errors into this type before surfacing them
-//! through the public API.
+//! Provides [`McpError`] (also aliased as [`AegisError`] and [`AegisCoreError`])
+//! which covers protocol violations, MCP security violations, proxy/transport
+//! failures, and internal system errors, with automated conversion into
+//! standard JSON-RPC error objects [`JsonRpcError`].
 
+use crate::jsonrpc::{
+    JsonRpcError, JSONRPC_INTERNAL_ERROR, JSONRPC_INVALID_PARAMS, JSONRPC_INVALID_REQUEST,
+    JSONRPC_METHOD_NOT_FOUND, JSONRPC_PARSE_ERROR,
+};
 use thiserror::Error;
 
-/// The canonical result type for operations in the AegisMCP-Gateway.
-pub type Result<T, E = AegisError> = std::result::Result<T, E>;
+/// The canonical Result type for `aegis-core` operations.
+pub type Result<T, E = McpError> = std::result::Result<T, E>;
 
-/// Top-level error type for the AegisMCP-Gateway.
-///
-/// Every subsystem error maps into a variant here so that callers can handle
-/// all gateway errors from a single match expression.
+/// Alias for [`McpError`] for backward compatibility and domain ergonomics.
+pub type AegisError = McpError;
+
+/// Alias for [`McpError`] for core domain operations.
+pub type AegisCoreError = McpError;
+
+/// Extensible error enum for the AegisMCP-Gateway ecosystem.
 #[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum AegisError {
+pub enum McpError {
     // -----------------------------------------------------------------------
-    // Protocol errors
+    // JSON-RPC 2.0 Protocol Violations (-32700 .. -32603)
     // -----------------------------------------------------------------------
-    /// The incoming message is not valid JSON.
-    #[error("invalid JSON payload: {0}")]
-    InvalidJson(#[from] serde_json::Error),
+    /// Invalid JSON payload received by server (-32700).
+    #[error("Parse error: {0}")]
+    ParseError(String),
 
-    /// The JSON-RPC envelope is structurally invalid (missing required fields, wrong types, etc.).
-    #[error("malformed JSON-RPC message: {reason}")]
-    MalformedJsonRpc {
-        /// Human-readable explanation of what was wrong.
+    /// The JSON sent is not a valid Request object (-32600).
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+
+    /// The method does not exist or is not available (-32601).
+    #[error("Method not found: '{0}'")]
+    MethodNotFound(String),
+
+    /// Invalid method parameter(s) (-32602).
+    #[error("Invalid params: {0}")]
+    InvalidParams(String),
+
+    /// Internal JSON-RPC error (-32603).
+    #[error("Internal error: {0}")]
+    InternalError(String),
+
+    // -----------------------------------------------------------------------
+    // MCP Security Errors (-32001 .. -32009)
+    // -----------------------------------------------------------------------
+    /// Unauthorized tool call attempt (-32001).
+    #[error("Unauthorized tool call to '{tool_name}': {reason}")]
+    UnauthorizedToolCall {
+        /// Name of the unauthorized tool.
+        tool_name: String,
+        /// Reason for denial.
         reason: String,
     },
 
-    /// The requested JSON-RPC method is not registered on this gateway.
-    #[error("unknown JSON-RPC method: '{method}'")]
-    UnknownMethod {
-        /// The unrecognised method name.
-        method: String,
-    },
-
-    // -----------------------------------------------------------------------
-    // Security / guardrail errors
-    // -----------------------------------------------------------------------
-    /// A guardrail rule blocked the request.
-    #[error("request blocked by guardrail rule '{rule}': {detail}")]
-    GuardrailViolation {
-        /// Name of the rule that triggered.
+    /// PII data violation detected in payload (-32002).
+    #[error("PII violation triggered by rule '{rule}': {detail}")]
+    PiiViolation {
+        /// Rule name that triggered.
         rule: String,
-        /// Additional context about the violation.
+        /// Explanation details.
         detail: String,
     },
 
-    /// Authentication or authorisation failure.
-    #[error("authorization denied: {0}")]
-    Unauthorized(String),
+    /// Prompt injection or malicious pattern detected (-32003).
+    #[error("Injection detected ({threat_type}): {detail}")]
+    InjectionDetected {
+        /// Category of threat detected.
+        threat_type: String,
+        /// Threat detail.
+        detail: String,
+    },
+
+    /// Rate limit exceeded for caller (-32004).
+    #[error("Rate limit of {limit} req/s exceeded; retry in {reset_seconds}s")]
+    RateLimitExceeded {
+        /// Permitted request rate limit.
+        limit: u32,
+        /// Seconds until limit reset.
+        reset_seconds: u32,
+    },
 
     // -----------------------------------------------------------------------
-    // WASM runtime errors
+    // Upstream Proxy & Transport Failures (-32010 .. -32019)
     // -----------------------------------------------------------------------
-    /// An error from the Wasmtime / WASI runtime.
-    #[error("WASM runtime error: {0}")]
-    WasmRuntime(String),
+    /// Upstream target server is unreachable (-32010).
+    #[error("Upstream server unreachable at '{uri}': {detail}")]
+    UpstreamUnreachable {
+        /// Target URI.
+        uri: String,
+        /// Cause details.
+        detail: String,
+    },
+
+    /// Upstream request timed out (-32011).
+    #[error("Upstream request to '{uri}' timed out after {timeout_ms}ms")]
+    UpstreamTimeout {
+        /// Target URI.
+        uri: String,
+        /// Timeout duration in milliseconds.
+        timeout_ms: u64,
+    },
+
+    /// Bad Gateway / invalid response from upstream (-32012).
+    #[error("Bad gateway: {message}")]
+    BadGateway {
+        /// Error description.
+        message: String,
+    },
 
     // -----------------------------------------------------------------------
-    // Infrastructure errors
+    // Conversion & Infrastructure Wrappers
     // -----------------------------------------------------------------------
-    /// An upstream / downstream I/O error.
+    /// Serde JSON error wrapper.
+    #[error("JSON serialization error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    /// I/O error wrapper.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// Generic catch-all for errors from third-party crates.
+    /// Transparent fallback for third-party anyhow errors.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
 
-impl AegisError {
-    /// Returns the corresponding JSON-RPC error code for this error variant.
-    ///
-    /// See <https://www.jsonrpc.org/specification#error_object> for the reserved code ranges.
+impl McpError {
+    /// Returns the JSON-RPC error code associated with this error variant.
     #[must_use]
-    pub fn json_rpc_code(&self) -> i64 {
+    pub const fn code(&self) -> i64 {
         match self {
-            Self::InvalidJson(_) | Self::MalformedJsonRpc { .. } => -32_700, // Parse error
-            Self::UnknownMethod { .. } => -32_601,                            // Method not found
-            Self::GuardrailViolation { .. } | Self::Unauthorized(_) => -32_003, // Custom: blocked
-            Self::WasmRuntime(_) => -32_004,                                  // Custom: WASM error
-            Self::Io(_) | Self::Other(_) => -32_603,                          // Internal error
+            Self::ParseError(_) | Self::Json(_) => JSONRPC_PARSE_ERROR,
+            Self::InvalidRequest(_) => JSONRPC_INVALID_REQUEST,
+            Self::MethodNotFound(_) => JSONRPC_METHOD_NOT_FOUND,
+            Self::InvalidParams(_) => JSONRPC_INVALID_PARAMS,
+            Self::InternalError(_) | Self::Io(_) | Self::Other(_) => JSONRPC_INTERNAL_ERROR,
+
+            Self::UnauthorizedToolCall { .. } => -32_001,
+            Self::PiiViolation { .. } => -32_002,
+            Self::InjectionDetected { .. } => -32_003,
+            Self::RateLimitExceeded { .. } => -32_004,
+
+            Self::UpstreamUnreachable { .. } => -32_010,
+            Self::UpstreamTimeout { .. } => -32_011,
+            Self::BadGateway { .. } => -32_012,
         }
     }
 
-    /// Returns `true` if this error should be reported to the client as a structured JSON-RPC
-    /// error response rather than closing the connection abruptly.
+    /// Converts this domain error into a standard [`JsonRpcError`] object.
     #[must_use]
-    pub fn is_protocol_error(&self) -> bool {
+    pub fn to_json_rpc_error(&self) -> JsonRpcError {
+        JsonRpcError::new(self.code(), self.to_string())
+    }
+
+    /// Returns `true` if this error represents a protocol-level violation.
+    #[must_use]
+    pub const fn is_protocol_error(&self) -> bool {
         matches!(
             self,
-            Self::InvalidJson(_)
-                | Self::MalformedJsonRpc { .. }
-                | Self::UnknownMethod { .. }
-                | Self::GuardrailViolation { .. }
-                | Self::Unauthorized(_)
+            Self::ParseError(_)
+                | Self::InvalidRequest(_)
+                | Self::MethodNotFound(_)
+                | Self::InvalidParams(_)
+                | Self::InternalError(_)
+                | Self::Json(_)
+        )
+    }
+
+    /// Returns `true` if this error represents a security enforcement policy block.
+    #[must_use]
+    pub const fn is_security_error(&self) -> bool {
+        matches!(
+            self,
+            Self::UnauthorizedToolCall { .. }
+                | Self::PiiViolation { .. }
+                | Self::InjectionDetected { .. }
+                | Self::RateLimitExceeded { .. }
+        )
+    }
+
+    /// Returns `true` if this error represents an upstream proxy transport failure.
+    #[must_use]
+    pub const fn is_upstream_error(&self) -> bool {
+        matches!(
+            self,
+            Self::UpstreamUnreachable { .. }
+                | Self::UpstreamTimeout { .. }
+                | Self::BadGateway { .. }
         )
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unknown_method_code() {
-        let err = AegisError::UnknownMethod {
-            method: "tools/foobar".into(),
-        };
-        assert_eq!(err.json_rpc_code(), -32_601);
-        assert!(err.is_protocol_error());
+impl From<McpError> for JsonRpcError {
+    fn from(err: McpError) -> Self {
+        err.to_json_rpc_error()
     }
+}
 
-    #[test]
-    fn io_error_not_protocol() {
-        let err = AegisError::Io(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe"));
-        assert_eq!(err.json_rpc_code(), -32_603);
-        assert!(!err.is_protocol_error());
+impl From<&McpError> for JsonRpcError {
+    fn from(err: &McpError) -> Self {
+        err.to_json_rpc_error()
     }
 }

@@ -18,7 +18,6 @@ use crate::error::WasmError;
 /// ```
 #[derive(Debug)]
 pub struct WasmEngine {
-    // Day 4: this will hold a `wasmtime::Engine` and a `wasmtime::component::Linker`.
     _private: (),
 }
 
@@ -27,10 +26,8 @@ impl WasmEngine {
     ///
     /// # Errors
     ///
-    /// Returns [`WasmError::EngineInit`] if Wasmtime cannot be initialised
-    /// (e.g., the host does not support the required CPU features).
-    pub fn new() -> Result<Self, WasmError> {
-        // TODO(Day 4): initialise `wasmtime::Engine` with async support.
+    /// Returns [`WasmError::EngineInit`] if Wasmtime cannot be initialised.
+    pub const fn new() -> Result<Self, WasmError> {
         Ok(Self { _private: () })
     }
 }

@@ -24,7 +24,7 @@ pub struct Verdict {
 impl Verdict {
     /// A verdict that allows the request through with no rule match.
     #[must_use]
-    pub fn allow() -> Self {
+    pub const fn allow() -> Self {
         Self {
             action: Action::Allow,
             triggered_rule: None,
@@ -64,7 +64,6 @@ impl GuardrailEngine {
     /// Returns [`GuardrailError`] if any rule's pattern is an invalid regex
     /// or if duplicate rule IDs are detected.
     pub fn new(mut rules: Vec<Rule>) -> Result<Self, GuardrailError> {
-        // Detect duplicate IDs.
         let mut seen = std::collections::HashSet::new();
         for rule in &rules {
             if !seen.insert(rule.id.as_str().to_owned()) {
@@ -72,10 +71,8 @@ impl GuardrailEngine {
             }
         }
 
-        // Sort by priority (lower = evaluated first).
         rules.sort_by_key(|r| r.priority);
 
-        // Compile regex patterns eagerly.
         let compiled = rules
             .into_iter()
             .map(|rule| {
@@ -101,11 +98,7 @@ impl GuardrailEngine {
                 continue;
             }
 
-            let matched = match matcher {
-                // No pattern = catch-all rule.
-                None => true,
-                Some(m) => m.is_match(payload),
-            };
+            let matched = matcher.as_ref().is_none_or(|m| m.is_match(payload));
 
             if matched {
                 debug!(rule_id = %rule.id, action = ?rule.action, "guardrail rule matched");
@@ -124,14 +117,11 @@ impl GuardrailEngine {
 
     /// Returns the number of rules currently registered.
     #[must_use]
-    pub fn rule_count(&self) -> usize {
+    pub const fn rule_count(&self) -> usize {
         self.compiled.len()
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;

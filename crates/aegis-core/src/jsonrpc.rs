@@ -1,9 +1,28 @@
-//! JSON-RPC 2.0 message types.
+//! JSON-RPC 2.0 message types and standard constants.
 //!
-//! Reference: <https://www.jsonrpc.org/specification>
+//! Reference: <https://modelcontextprotocol.io> and <https://www.jsonrpc.org/specification>
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+// ---------------------------------------------------------------------------
+// Standard JSON-RPC Error Codes
+// ---------------------------------------------------------------------------
+
+/// Invalid JSON was received by the server (-32700).
+pub const JSONRPC_PARSE_ERROR: i64 = -32_700;
+
+/// The JSON sent is not a valid Request object (-32600).
+pub const JSONRPC_INVALID_REQUEST: i64 = -32_600;
+
+/// The method does not exist / is not available (-32601).
+pub const JSONRPC_METHOD_NOT_FOUND: i64 = -32_601;
+
+/// Invalid method parameter(s) (-32602).
+pub const JSONRPC_INVALID_PARAMS: i64 = -32_602;
+
+/// Internal JSON-RPC error (-32603).
+pub const JSONRPC_INTERNAL_ERROR: i64 = -32_603;
 
 // ---------------------------------------------------------------------------
 // ID
@@ -11,7 +30,7 @@ use serde_json::Value;
 
 /// A JSON-RPC 2.0 request identifier.
 ///
-/// Per the spec an ID may be a string, a number, or `null` (for notifications).
+/// Per the JSON-RPC 2.0 spec, an ID may be a String, an Integer (i64), or `Null`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum JsonRpcId {
@@ -19,72 +38,168 @@ pub enum JsonRpcId {
     Number(i64),
     /// String identifier.
     String(String),
-    /// Null — used for notifications where no response is expected.
+    /// Null — used when request ID cannot be determined or for notifications.
     Null,
 }
 
+impl JsonRpcId {
+    /// Returns `true` if the ID is `Null`.
+    #[must_use]
+    pub const fn is_null(&self) -> bool {
+        matches!(self, Self::Null)
+    }
+
+    /// Returns the ID as a string slice if it is [`JsonRpcId::String`].
+    #[must_use]
+    pub const fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Returns the ID as `i64` if it is [`JsonRpcId::Number`].
+    #[must_use]
+    pub const fn as_i64(&self) -> Option<i64> {
+        match self {
+            Self::Number(n) => Some(*n),
+            _ => None,
+        }
+    }
+}
+
+impl From<i64> for JsonRpcId {
+    fn from(val: i64) -> Self {
+        Self::Number(val)
+    }
+}
+
+impl From<String> for JsonRpcId {
+    fn from(val: String) -> Self {
+        Self::String(val)
+    }
+}
+
+impl From<&str> for JsonRpcId {
+    fn from(val: &str) -> Self {
+        Self::String(val.to_owned())
+    }
+}
+
+impl std::fmt::Display for JsonRpcId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Number(n) => write!(f, "{n}"),
+            Self::String(s) => write!(f, "{s}"),
+            Self::Null => write!(f, "null"),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Request
+// Request & Notification
 // ---------------------------------------------------------------------------
 
 /// A JSON-RPC 2.0 request object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
-    /// Must always be `"2.0"`.
+    /// Protocol version — must be `"2.0"`.
     pub jsonrpc: String,
 
-    /// The method to be invoked.
+    /// The name of the method to be invoked.
     pub method: String,
 
-    /// Optional structured or unstructured parameters.
+    /// Parameter values to pass during method invocation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub params: Option<Value>,
 
     /// An identifier established by the client.
-    ///
-    /// If `None`, the request is treated as a notification.
+    /// If omitted or `None`, this request is a notification.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<JsonRpcId>,
 }
 
 impl JsonRpcRequest {
-    /// Returns `true` if this request is a notification (i.e., no `id`).
+    /// Creates a new `JsonRpcRequest` with `"2.0"` protocol version.
     #[must_use]
-    pub fn is_notification(&self) -> bool {
+    pub fn new(method: impl Into<String>, params: Option<Value>, id: Option<JsonRpcId>) -> Self {
+        Self {
+            jsonrpc: "2.0".into(),
+            method: method.into(),
+            params,
+            id,
+        }
+    }
+
+    /// Creates a new `JsonRpcRequest` representing a notification (no `id`).
+    #[must_use]
+    pub fn notification(method: impl Into<String>, params: Option<Value>) -> Self {
+        Self::new(method, params, None)
+    }
+
+    /// Returns `true` if this request is a notification (i.e. `id` is `None`).
+    #[must_use]
+    pub const fn is_notification(&self) -> bool {
         self.id.is_none()
     }
 
-    /// Validates the `jsonrpc` version field.
+    /// Returns `true` if `jsonrpc == "2.0"`.
     #[must_use]
     pub fn is_valid_version(&self) -> bool {
         self.jsonrpc == "2.0"
     }
 }
 
+/// A dedicated JSON-RPC 2.0 notification object (strictly without an `id`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JsonRpcNotification {
+    /// Protocol version — must be `"2.0"`.
+    pub jsonrpc: String,
+
+    /// The method name.
+    pub method: String,
+
+    /// Optional notification parameters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<Value>,
+}
+
+impl JsonRpcNotification {
+    /// Creates a new `JsonRpcNotification`.
+    #[must_use]
+    pub fn new(method: impl Into<String>, params: Option<Value>) -> Self {
+        Self {
+            jsonrpc: "2.0".into(),
+            method: method.into(),
+            params,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Response
+// Response & Error Object
 // ---------------------------------------------------------------------------
 
 /// A JSON-RPC 2.0 response object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JsonRpcResponse {
-    /// Must always be `"2.0"`.
+    /// Protocol version — must be `"2.0"`.
     pub jsonrpc: String,
 
-    /// The result value if the call succeeded.
+    /// Result payload if call succeeded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
 
-    /// The error object if the call failed.
+    /// Error object if call failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<JsonRpcError>,
 
-    /// Must mirror the `id` from the corresponding request.
+    /// The request ID that this response corresponds to.
     pub id: JsonRpcId,
 }
 
 impl JsonRpcResponse {
-    /// Construct a successful response.
+    /// Constructs a successful JSON-RPC response.
     #[must_use]
     pub fn success(id: JsonRpcId, result: Value) -> Self {
         Self {
@@ -95,7 +210,7 @@ impl JsonRpcResponse {
         }
     }
 
-    /// Construct an error response.
+    /// Constructs an error JSON-RPC response.
     #[must_use]
     pub fn error(id: JsonRpcId, error: JsonRpcError) -> Self {
         Self {
@@ -105,28 +220,30 @@ impl JsonRpcResponse {
             id,
         }
     }
+
+    /// Returns `true` if this response contains an error.
+    #[must_use]
+    pub const fn is_error(&self) -> bool {
+        self.error.is_some()
+    }
 }
 
-// ---------------------------------------------------------------------------
-// Error object
-// ---------------------------------------------------------------------------
-
-/// A JSON-RPC 2.0 error object embedded in a [`JsonRpcResponse`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A JSON-RPC 2.0 error object embedded within a [`JsonRpcResponse`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JsonRpcError {
-    /// A number that indicates the error type.
+    /// Error code integer.
     pub code: i64,
 
-    /// A short description of the error.
+    /// Short human-readable error message.
     pub message: String,
 
-    /// Additional data about the error (optional).
+    /// Additional structured error data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
 }
 
 impl JsonRpcError {
-    /// Create a new `JsonRpcError`.
+    /// Creates a new `JsonRpcError`.
     #[must_use]
     pub fn new(code: i64, message: impl Into<String>) -> Self {
         Self {
@@ -136,7 +253,7 @@ impl JsonRpcError {
         }
     }
 
-    /// Attach extra `data` to this error.
+    /// Attaches additional structured data to the error.
     #[must_use]
     pub fn with_data(mut self, data: Value) -> Self {
         self.data = Some(data);
@@ -144,9 +261,6 @@ impl JsonRpcError {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;
