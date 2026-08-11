@@ -1,0 +1,6 @@
+package aegis:guardrail@0.1.0;
+
+/// The primary WASI 0.2 Component Model world exported by Aegis guardrail plugins.
+world guardrail-policy {
+    export inspector;
+}

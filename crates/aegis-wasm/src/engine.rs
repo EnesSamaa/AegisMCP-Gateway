@@ -1,39 +1,59 @@
-//! WASM engine stub.
+//! Wasmtime runtime engine integration.
 //!
-//! Full implementation will arrive in Day 4 of the roadmap.
-//! The struct is public so dependents can type-check against it today.
+//! Provides [`WasmEngine`] which manages the Wasmtime [`wasmtime::Engine`]
+//! configured for WASI 0.2 component execution.
 
 use crate::error::WasmError;
+use wasmtime::{Config, Engine};
 
-/// The central WASM execution engine.
-///
-/// Wraps a `wasmtime::Engine` configured with async support and the WASI
-/// 0.2 preview adapter. Construct via [`WasmEngine::new`].
-///
-/// # Example (future API)
-///
-/// ```rust,ignore
-/// let engine = WasmEngine::new()?;
-/// let result = engine.execute_policy("guardrail.wasm", &payload).await?;
-/// ```
-#[derive(Debug)]
+/// Execution sandbox engine for WASM policy plugins.
+#[derive(Clone)]
 pub struct WasmEngine {
-    _private: (),
+    engine: Engine,
 }
 
 impl WasmEngine {
-    /// Create a new `WasmEngine` with default configuration.
+    /// Creates a new `WasmEngine` with component model support enabled.
     ///
     /// # Errors
     ///
-    /// Returns [`WasmError::EngineInit`] if Wasmtime cannot be initialised.
-    pub const fn new() -> Result<Self, WasmError> {
-        Ok(Self { _private: () })
+    /// Returns [`WasmError::EngineInit`] if Wasmtime engine setup fails.
+    pub fn new() -> Result<Self, WasmError> {
+        let mut config = Config::new();
+        config.wasm_component_model(true);
+
+        let engine = Engine::new(&config)
+            .map_err(|e| WasmError::EngineInit(e.to_string()))?;
+
+        Ok(Self { engine })
+    }
+
+    /// Returns a reference to the underlying [`wasmtime::Engine`].
+    #[must_use]
+    pub const fn inner(&self) -> &Engine {
+        &self.engine
     }
 }
 
 impl Default for WasmEngine {
     fn default() -> Self {
-        Self::new().expect("WasmEngine::default() — engine initialisation must not fail")
+        Self::new().expect("WasmEngine initialisation failed")
+    }
+}
+
+impl std::fmt::Debug for WasmEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WasmEngine").finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wasm_engine_init() {
+        let engine = WasmEngine::new().expect("Engine created successfully");
+        assert!(engine.inner().precompile_module(&[]).is_err());
     }
 }

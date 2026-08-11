@@ -1,0 +1,9 @@
+package aegis:guardrail@0.1.0;
+
+/// Host-Guest interface for inspecting MCP tool invocations.
+interface inspector {
+    use types.{inspection-context, guardrail-result};
+
+    /// Main entry point for policy evaluation.
+    inspect: func(ctx: inspection-context) -> guardrail-result;
+}

@@ -1,0 +1,50 @@
+package aegis:guardrail@0.1.0;
+
+/// Core evaluation data types for WASI 0.2 guardrail plugins.
+interface types {
+    /// Risk classification level assigned by a policy evaluation.
+    enum violation-risk {
+        low,
+        medium,
+        high,
+        critical,
+    }
+
+    /// Decision outcome returned by a policy plugin.
+    variant policy-decision {
+        /// Request passes inspection without modification.
+        allow,
+        /// Request is blocked; payload string describes denial reason.
+        deny(string),
+        /// Request is allowed with modified arguments JSON payload.
+        modify(string),
+    }
+
+    /// Context passed to a policy plugin for inspection.
+    record inspection-context {
+        /// Unique gateway request tracking ID.
+        request-id: string,
+        /// Client session tracking ID.
+        session-id: string,
+        /// Role of the calling agent (e.g., "admin", "analyst").
+        agent-role: string,
+        /// Target tool name.
+        tool-name: string,
+        /// JSON string representation of tool input arguments.
+        arguments-json: string,
+        /// Metadata key-value attribute pairs.
+        metadata: list<tuple<string, string>>,
+    }
+
+    /// Comprehensive evaluation result returned by a policy plugin.
+    record guardrail-result {
+        /// Policy decision (allow, deny, modify).
+        decision: policy-decision,
+        /// Risk level assessment.
+        risk: violation-risk,
+        /// Plugin execution time in microseconds.
+        execution-time-us: u64,
+        /// Additional plugin execution metadata key-value pairs.
+        metadata: list<tuple<string, string>>,
+    }
+}
