@@ -1,6 +1,7 @@
 //! Low-level Tokio and Hyper 1.x listener server loop with Tower middleware stack.
 
 use crate::{
+    config::schema::GatewayConfig,
     config::ProxyConfig,
     error::ProxyError,
     middleware::{LatencyTrackingLayer, RequestIdLayer, TimeoutLayer, TracingLayer},
@@ -12,7 +13,8 @@ use hyper_util::{
 };
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::net::TcpListener;
+use tokio::sync::{oneshot, watch};
 use tower::{service_fn, ServiceBuilder};
 use tracing::{error, info};
 
@@ -28,6 +30,23 @@ impl McpProxy {
     #[must_use]
     pub fn new(config: ProxyConfig) -> Self {
         let router = Arc::new(ProxyRouter::new(&config.upstream_url));
+        Self {
+            config,
+            router,
+            timeout_duration: Duration::from_secs(30),
+        }
+    }
+
+    /// Creates a new `McpProxy` with dynamic configuration watch subscription.
+    #[must_use]
+    pub fn with_config_receiver(
+        config: ProxyConfig,
+        config_rx: watch::Receiver<GatewayConfig>,
+    ) -> Self {
+        let router = Arc::new(ProxyRouter::with_config_receiver(
+            &config.upstream_url,
+            config_rx,
+        ));
         Self {
             config,
             router,

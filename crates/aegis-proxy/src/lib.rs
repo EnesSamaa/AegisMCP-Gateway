@@ -14,7 +14,10 @@ pub mod proxy;
 pub mod router;
 pub mod sse;
 
-pub use config::ProxyConfig;
+pub use config::{
+    AgentRoleMapping, ConfigManager, GatewayConfig, ProxyConfig, RouteConfig, SecuritySettings,
+    ServerSettings,
+};
 pub use error::ProxyError;
 pub use middleware::{
     LatencyTrackingLayer, RequestIdLayer, TimeoutLayer, TracingLayer, X_REQUEST_ID,

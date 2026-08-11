@@ -1,0 +1,30 @@
+# AegisMCP-Gateway Enterprise Configuration (aegis.yaml)
+
+server:
+  listen_addr: "127.0.0.1:8080"
+  default_timeout_ms: 30000
+
+routes:
+  - path: "/mcp"
+    upstream_url: "http://127.0.0.1:9090"
+    required_role: "default"
+    enabled: true
+  - path: "/sse"
+    upstream_url: "http://127.0.0.1:9090"
+    required_role: "default"
+    enabled: true
+
+roles:
+  - role: "admin"
+    allowed_tools:
+      - "*"
+    max_rate_limit: 10000
+  - role: "default"
+    allowed_tools:
+      - "read_file"
+      - "list_dir"
+    max_rate_limit: 1000
+
+security:
+  enable_wasm_guardrails: true
+  enable_proof_logging: true

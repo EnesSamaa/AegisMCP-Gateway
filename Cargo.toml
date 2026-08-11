@@ -25,9 +25,11 @@ tower          = { version = "0.5",  features = ["util"] }
 wasmtime       = { version = "47", features = ["async", "component-model"] }
 wit-bindgen    = { version = "0.36", features = ["realloc"] }
 
-# Serialization
+# Serialization & Config
 serde          = { version = "1.0", features = ["derive"] }
 serde_json     = { version = "1.0" }
+config         = { version = "0.15", features = ["yaml"] }
+notify         = { version = "8.0" }
 
 # Observability
 tracing            = { version = "0.1" }

@@ -1,6 +1,7 @@
-//! Core request routing and forwarding pipeline.
+//! Core request routing and forwarding pipeline with dynamic route table evaluation.
 
 use crate::{
+    config::schema::GatewayConfig,
     error::ProxyError,
     sse::{apply_sse_headers, is_sse_request},
 };
@@ -16,22 +17,44 @@ use hyper_util::{
     client::legacy::{connect::HttpConnector, Client},
     rt::TokioExecutor,
 };
+use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 /// High-performance router and forwarding pipeline for MCP requests.
 pub struct ProxyRouter {
     client: Client<HttpConnector, BoxBody<Bytes, hyper::Error>>,
-    upstream_url: String,
+    config_rx: watch::Receiver<GatewayConfig>,
+    fallback_upstream_url: String,
 }
 
 impl ProxyRouter {
-    /// Creates a new `ProxyRouter` with an initialized HTTP client pool.
+    /// Creates a new `ProxyRouter` with an initialized HTTP client pool and default static upstream.
     #[must_use]
     pub fn new(upstream_url: impl Into<String>) -> Self {
         let client = Client::builder(TokioExecutor::new()).build_http();
+        let fallback_upstream = upstream_url.into();
+        let mut default_cfg = GatewayConfig::default();
+        default_cfg.routes[0].upstream_url.clone_from(&fallback_upstream);
+        let (_, config_rx) = watch::channel(default_cfg);
+
         Self {
             client,
-            upstream_url: upstream_url.into(),
+            config_rx,
+            fallback_upstream_url: fallback_upstream,
+        }
+    }
+
+    /// Creates a `ProxyRouter` with dynamic [`GatewayConfig`] subscription.
+    #[must_use]
+    pub fn with_config_receiver(
+        upstream_url: impl Into<String>,
+        config_rx: watch::Receiver<GatewayConfig>,
+    ) -> Self {
+        let client = Client::builder(TokioExecutor::new()).build_http();
+        Self {
+            client,
+            config_rx,
+            fallback_upstream_url: upstream_url.into(),
         }
     }
 
@@ -62,6 +85,20 @@ impl ProxyRouter {
         // Check SSE
         let is_sse = is_sse_request(&req);
 
+        // Dynamic route resolution — scoped block so watch::Ref is dropped before await points
+        let upstream_target_url = {
+            let req_path = req.uri().path();
+            let current_config = self.config_rx.borrow();
+            current_config
+                .routes
+                .iter()
+                .find(|r| r.enabled && req_path.starts_with(&r.path))
+                .map_or_else(
+                    || self.fallback_upstream_url.clone(),
+                    |r| r.upstream_url.clone(),
+                )
+        };
+
         // Extract parts and body
         let (parts, incoming_body) = req.into_parts();
 
@@ -86,7 +123,7 @@ impl ProxyRouter {
             .uri
             .path_and_query()
             .map_or("", hyper::http::uri::PathAndQuery::as_str);
-        let target_uri = format!("{}{path_and_query}", self.upstream_url);
+        let target_uri = format!("{upstream_target_url}{path_and_query}");
 
         debug!(target = %target_uri, is_sse = is_sse, "Forwarding request to upstream");
 
