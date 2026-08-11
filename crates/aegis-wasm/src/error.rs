@@ -14,6 +14,14 @@ pub enum WasmError {
     #[error("WASM module load failed: {0}")]
     ModuleLoad(String),
 
+    /// Failed to compile a WASM component.
+    #[error("WASM compilation failed: {0}")]
+    Compilation(String),
+
+    /// Failed to bind WASI host interfaces to linker.
+    #[error("Host interface binding failed: {0}")]
+    HostInterfaceBind(String),
+
     /// A trap occurred during WASM execution.
     #[error("WASM trap during execution: {0}")]
     Trap(String),
