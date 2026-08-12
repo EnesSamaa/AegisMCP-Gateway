@@ -8,6 +8,10 @@ repository  = "https://github.com/EnesSamaa/AegisMCP-Gateway"
 keywords    = ["wasm", "wasmtime", "wasi", "policy", "sandbox"]
 categories  = ["wasm", "network-programming"]
 
+[[bench]]
+name    = "wasm_bench"
+harness = false
+
 [lints]
 workspace = true
 
@@ -26,4 +30,5 @@ ed25519-dalek = { workspace = true }
 semver        = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio     = { workspace = true }
+criterion = { workspace = true }
