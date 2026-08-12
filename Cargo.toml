@@ -8,6 +8,13 @@ members = [
     "crates/aegis-proof",
     "plugins/plugin-pii-filter",
 ]
+default-members = [
+    "crates/aegis-core",
+    "crates/aegis-proxy",
+    "crates/aegis-wasm",
+    "crates/aegis-guardrails",
+    "crates/aegis-proof",
+]
 
 # ---------------------------------------------------------------------------
 # Workspace-level shared dependencies (referenced via `workspace = true`)

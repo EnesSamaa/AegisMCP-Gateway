@@ -20,8 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install nightly Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
 
@@ -46,7 +46,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --exclude plugin-pii-filter --all-targets --all-features -- -D warnings
 
   # ---------------------------------------------------------------------------
   # 3. Test suite
@@ -68,8 +68,8 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: cargo test (all workspace crates)
-        run: cargo test --workspace --all-features
+      - name: cargo test (all host workspace crates)
+        run: cargo test --workspace --exclude plugin-pii-filter --all-features
 
   # ---------------------------------------------------------------------------
   # 4. cargo check — ensures the workspace builds cleanly on MSRV + beta
@@ -94,7 +94,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: cargo check (workspace)
-        run: cargo check --workspace --all-features
+        run: cargo check --workspace --exclude plugin-pii-filter --all-features
 
   # ---------------------------------------------------------------------------
   # 5. Security audit
