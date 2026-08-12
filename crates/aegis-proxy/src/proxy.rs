@@ -7,6 +7,7 @@ use crate::{
     middleware::{LatencyTrackingLayer, RequestIdLayer, TimeoutLayer, TracingLayer},
     router::ProxyRouter,
 };
+use aegis_wasm::PluginRunner;
 use hyper_util::{
     rt::TokioIo, server::conn::auto::Builder as ServerConnBuilder,
     service::TowerToHyperService,
@@ -51,6 +52,17 @@ impl McpProxy {
             config,
             router,
             timeout_duration: Duration::from_secs(30),
+        }
+    }
+
+    /// Attaches a WASM plugin runner for real-time guardrail policy evaluation.
+    #[must_use]
+    pub fn with_wasm_runner(self, runner: Arc<PluginRunner>) -> Self {
+        let router = (*self.router).clone().with_wasm_runner(runner);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
         }
     }
 

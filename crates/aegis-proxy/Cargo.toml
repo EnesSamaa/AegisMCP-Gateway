@@ -22,6 +22,7 @@ workspace = true
 [dependencies]
 aegis-core       = { path = "../aegis-core" }
 aegis-guardrails = { path = "../aegis-guardrails" }
+aegis-wasm       = { path = "../aegis-wasm" }
 
 tokio          = { workspace = true }
 hyper          = { workspace = true }

@@ -5,7 +5,8 @@ use crate::{
     error::ProxyError,
     sse::{apply_sse_headers, is_sse_request},
 };
-use aegis_core::JsonRpcRequest;
+use aegis_core::{AgentIdentity, JsonRpcRequest, McpSessionContext, RequestId, SessionId, ToolCall};
+use aegis_wasm::{build_inspection_context, HostDecision, PluginRunner};
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{
@@ -17,14 +18,18 @@ use hyper_util::{
     client::legacy::{connect::HttpConnector, Client},
     rt::TokioExecutor,
 };
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 /// High-performance router and forwarding pipeline for MCP requests.
+#[derive(Clone)]
 pub struct ProxyRouter {
     client: Client<HttpConnector, BoxBody<Bytes, hyper::Error>>,
     config_rx: watch::Receiver<GatewayConfig>,
     fallback_upstream_url: String,
+    wasm_runner: Option<Arc<PluginRunner>>,
 }
 
 impl ProxyRouter {
@@ -41,6 +46,7 @@ impl ProxyRouter {
             client,
             config_rx,
             fallback_upstream_url: fallback_upstream,
+            wasm_runner: None,
         }
     }
 
@@ -55,6 +61,54 @@ impl ProxyRouter {
             client,
             config_rx,
             fallback_upstream_url: upstream_url.into(),
+            wasm_runner: None,
+        }
+    }
+
+    /// Attaches an optional WASM plugin runner for real-time guardrail policy evaluation.
+    #[must_use]
+    pub fn with_wasm_runner(mut self, runner: Arc<PluginRunner>) -> Self {
+        self.wasm_runner = Some(runner);
+        self
+    }
+
+    /// Evaluates WASM policy guardrails for an incoming JSON-RPC request.
+    async fn evaluate_wasm_guardrail(
+        &self,
+        rpc_req: &JsonRpcRequest,
+    ) -> Option<Response<BoxBody<Bytes, hyper::Error>>> {
+        let runner = self.wasm_runner.as_ref()?;
+        let identity = AgentIdentity::new("client-proxy", "ProxyAgent", "analyst");
+        let session = McpSessionContext::new(SessionId::new(), identity, 1_700_000_000_000);
+        let req_id = RequestId::new();
+        let tool_call = ToolCall::new(&rpc_req.method, rpc_req.params.clone());
+
+        let wit_ctx = build_inspection_context(&session, req_id, &tool_call);
+
+        match runner.evaluate_concurrently(&wit_ctx, Duration::from_millis(500)).await {
+            Ok(summary) => match summary.decision {
+                HostDecision::Allow | HostDecision::Modify(_) => None,
+                HostDecision::Deny(reason) => {
+                    warn!(reason = %reason, "WASM Policy Evaluation Denied Request");
+                    let json_id = serde_json::to_string(&rpc_req.id).unwrap_or_else(|_| "null".to_string());
+                    let err_json = format!(
+                        r#"{{"jsonrpc":"2.0","error":{{"code":-32001,"message":"Security Policy Denial: {reason}"}},"id":{json_id}}}"#
+                    );
+                    let err_body = Full::new(Bytes::from(err_json))
+                        .map_err(|_| -> hyper::Error { unreachable!() })
+                        .boxed();
+
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(hyper::header::CONTENT_TYPE, "application/json")
+                        .body(err_body)
+                        .ok()
+                }
+            },
+            Err(err) => {
+                warn!(error = %err, "WASM Policy Evaluation Failed");
+                None
+            }
         }
     }
 
@@ -105,7 +159,7 @@ impl ProxyRouter {
         // Collect body for inspection
         let body_bytes = incoming_body.collect().await?.to_bytes();
 
-        // Inspect JSON-RPC if present
+        // Inspect JSON-RPC & Evaluate WASM Policy Guardrails if enabled
         if !body_bytes.is_empty() {
             if let Ok(rpc_req) = serde_json::from_slice::<JsonRpcRequest>(&body_bytes) {
                 info!(
@@ -113,6 +167,10 @@ impl ProxyRouter {
                     id = ?rpc_req.id,
                     "Intercepted MCP JSON-RPC Request"
                 );
+
+                if let Some(deny_resp) = self.evaluate_wasm_guardrail(&rpc_req).await {
+                    return Ok(deny_resp);
+                }
             } else {
                 debug!("Request body present but not a valid JsonRpcRequest");
             }
