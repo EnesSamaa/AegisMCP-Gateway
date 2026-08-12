@@ -22,6 +22,14 @@ pub enum WasmError {
     #[error("Host interface binding failed: {0}")]
     HostInterfaceBind(String),
 
+    /// Ed25519 signature verification failed or invalid signature format.
+    #[error("Plugin signature verification failed: {0}")]
+    SignatureVerification(String),
+
+    /// Invalid plugin metadata or semver format.
+    #[error("Invalid plugin metadata: {0}")]
+    InvalidMetadata(String),
+
     /// A trap occurred during WASM execution.
     #[error("WASM trap during execution: {0}")]
     Trap(String),

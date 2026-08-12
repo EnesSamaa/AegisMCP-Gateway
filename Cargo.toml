@@ -36,6 +36,10 @@ notify         = { version = "8.0" }
 tracing            = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 
+# Security & Crypto
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+semver        = { version = "1.0" }
+
 # Error handling
 thiserror = { version = "2.0" }
 anyhow    = { version = "1.0" }
