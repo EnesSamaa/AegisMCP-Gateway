@@ -16,6 +16,8 @@ pub mod error;
 pub mod linker;
 pub mod loader;
 pub mod mapping;
+pub mod pool;
+pub mod runner;
 pub mod store;
 
 pub use bindings::aegis::guardrail::types as wit_types;
@@ -27,4 +29,6 @@ pub use mapping::{
     build_inspection_context, parse_guardrail_result, HostDecision, HostPolicySummary,
     HostRiskRating,
 };
+pub use pool::{PoolConfig, PooledInstance, PooledInstanceGuard, WasmInstancePool};
+pub use runner::PluginRunner;
 pub use store::{AegisStoreCtx, DEFAULT_MAX_MEMORY_BYTES};

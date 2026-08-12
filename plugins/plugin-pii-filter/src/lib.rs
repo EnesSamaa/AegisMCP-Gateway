@@ -19,7 +19,7 @@ impl Guest for PiiFilterPlugin {
 
         let cc_pattern = r"\b(?:\d[ -]*?){13,16}\b";
         let email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b";
-        let api_key_pattern = r"(sk_test_[0-9a-zA-Z]{24,}|ghp_[0-9a-zA-Z]{36}|Bearer\s+[A-Za-z0-9\-\._~\+\/]+=*)";
+        let api_key_pattern = r"(sk_live_[0-9a-zA-Z_]{24,}|sk_test_[0-9a-zA-Z_]{24,}|ghp_[0-9a-zA-Z_]{36}|Bearer\s+[A-Za-z0-9\-\._~\+\/]+=*)";
 
         let cc_regex = regex::Regex::new(cc_pattern).expect("Valid CC regex");
         let email_regex = regex::Regex::new(email_pattern).expect("Valid email regex");
@@ -113,7 +113,7 @@ mod tests {
             session_id: "sess-3".to_string(),
             agent_role: "devops".to_string(),
             tool_name: "deploy_service".to_string(),
-            arguments_json: r#"{"token":"sk_test_mock_token_000000000000000000000000"}"#.to_string(),
+            arguments_json: r#"{"token":"sk_test_mock_token_12345678901234567890"}"#.to_string(),
             metadata: vec![],
         };
 
