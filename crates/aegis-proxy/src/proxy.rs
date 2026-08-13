@@ -8,7 +8,8 @@ use crate::{
     router::ProxyRouter,
 };
 use aegis_guardrails::{
-    IdentityExtractor, PromptInjectionDetector, TokenTranslator, ToolAuthorizationEngine,
+    DlpMaskingEngine, IdentityExtractor, PromptInjectionDetector, TokenTranslator,
+    ToolAuthorizationEngine,
 };
 use aegis_wasm::PluginRunner;
 use hyper_util::{
@@ -107,6 +108,17 @@ impl McpProxy {
         let router = (*self.router)
             .clone()
             .with_prompt_injection_detector(detector);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
+        }
+    }
+
+    /// Attaches a DLP Masking Engine for response PII sanitization.
+    #[must_use]
+    pub fn with_dlp_engine(self, engine: Arc<DlpMaskingEngine>) -> Self {
+        let router = (*self.router).clone().with_dlp_engine(engine);
         Self {
             config: self.config,
             router: Arc::new(router),

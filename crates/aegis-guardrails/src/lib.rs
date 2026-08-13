@@ -11,6 +11,7 @@
 #![warn(clippy::pedantic, clippy::nursery)]
 #![warn(missing_docs)]
 
+pub mod dlp;
 pub mod engine;
 pub mod error;
 pub mod identity;
@@ -20,6 +21,7 @@ pub mod rule;
 pub mod token_translation;
 pub mod tool_authz;
 
+pub use dlp::{DlpMaskingEngine, DlpScanReport};
 pub use engine::GuardrailEngine;
 pub use error::GuardrailError;
 pub use identity::{AgentJwtClaims, IdentityContext, IdentityExtractor};

@@ -9,8 +9,9 @@ use aegis_core::{
     AgentIdentity, JsonRpcRequest, McpSessionContext, RequestId, SessionId, ToolCall,
 };
 use aegis_guardrails::{
-    IdentityContext, IdentityExtractor, InjectionSeverity, PolicyDecision as AuthzDecision,
-    PromptInjectionDetector, TokenTranslator, ToolAuthorizationEngine,
+    DlpMaskingEngine, IdentityContext, IdentityExtractor, InjectionSeverity,
+    PolicyDecision as AuthzDecision, PromptInjectionDetector, TokenTranslator,
+    ToolAuthorizationEngine,
 };
 use aegis_wasm::{build_inspection_context, HostDecision, PluginRunner};
 use bytes::Bytes;
@@ -40,6 +41,7 @@ pub struct ProxyRouter {
     token_translator: Option<Arc<TokenTranslator>>,
     tool_authz_engine: Option<Arc<ToolAuthorizationEngine>>,
     prompt_injection_detector: Option<Arc<PromptInjectionDetector>>,
+    dlp_engine: Option<Arc<DlpMaskingEngine>>,
 }
 
 impl ProxyRouter {
@@ -63,6 +65,7 @@ impl ProxyRouter {
             token_translator: None,
             tool_authz_engine: None,
             prompt_injection_detector: None,
+            dlp_engine: None,
         }
     }
 
@@ -82,6 +85,7 @@ impl ProxyRouter {
             token_translator: None,
             tool_authz_engine: None,
             prompt_injection_detector: None,
+            dlp_engine: None,
         }
     }
 
@@ -120,6 +124,13 @@ impl ProxyRouter {
         detector: Arc<PromptInjectionDetector>,
     ) -> Self {
         self.prompt_injection_detector = Some(detector);
+        self
+    }
+
+    /// Attaches a DLP Masking Engine for response PII sanitization.
+    #[must_use]
+    pub fn with_dlp_engine(mut self, engine: Arc<DlpMaskingEngine>) -> Self {
+        self.dlp_engine = Some(engine);
         self
     }
 
@@ -435,7 +446,26 @@ impl ProxyRouter {
             }
         }
 
-        let boxed_resp_body = resp_body.map_err(hyper::Error::from).boxed();
+        // Apply DLP Masking to outbound response body if enabled
+        let boxed_resp_body = if is_sse {
+            resp_body.map_err(hyper::Error::from).boxed()
+        } else if let Some(dlp) = &self.dlp_engine {
+            let resp_bytes = resp_body.collect().await?.to_bytes();
+            let resp_str = String::from_utf8_lossy(&resp_bytes);
+            let (masked_str, report) = dlp.mask_payload(&resp_str);
+            if report.items_masked_count > 0 {
+                info!(
+                    items_masked = report.items_masked_count,
+                    categories = ?report.masked_categories,
+                    "DLP Masking Applied to Outbound Response"
+                );
+            }
+            Full::new(Bytes::from(masked_str))
+                .map_err(|_| -> hyper::Error { unreachable!() })
+                .boxed()
+        } else {
+            resp_body.map_err(hyper::Error::from).boxed()
+        };
 
         Ok(client_resp.body(boxed_resp_body)?)
     }
