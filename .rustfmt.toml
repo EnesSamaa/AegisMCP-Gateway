@@ -1,52 +1,7 @@
 # AegisMCP-Gateway — canonical rustfmt configuration
-# Run: cargo fmt  |  Check: cargo fmt --check
-
-edition                      = "2021"
-
-# Line width
-max_width                    = 100
-comment_width                = 100
-wrap_comments                = true
-
-# Imports
-imports_granularity          = "Crate"   # Group std / extern / crate into minimal blocks
-group_imports                = "StdExternalCrate"
-reorder_imports              = true
-reorder_modules              = true
-
-# Trailing commas
-trailing_comma               = "Vertical"   # Add trailing commas in multi-line structures
-trailing_semicolon           = true
-
-# Braces & blocks
-brace_style                  = "SameLineWhere"
-control_brace_style          = "AlwaysSameLine"
-empty_item_single_line       = true
-struct_lit_single_line       = true
-fn_single_line               = false
-
-# Match arms
-match_arm_blocks             = true
-match_arm_leading_pipes      = "Never"
-match_block_trailing_comma   = true
-
-# Spacing
-spaces_around_ranges         = false
-binop_separator              = "Front"
-
-# Strings
-format_strings               = false   # Preserve hand-formatted format strings
-
-# Macros
-format_macro_matchers        = true
-format_macro_bodies          = true
-
-# Doc-comments
-normalize_comments           = true
-normalize_doc_attributes     = true
-
-# Miscellaneous
-use_field_init_shorthand     = true
-use_try_shorthand            = true
-force_explicit_abi           = true
-newline_style                = "Unix"
+edition    = "2021"
+max_width  = 100
+reorder_imports = true
+reorder_modules = true
+use_field_init_shorthand = true
+use_try_shorthand = true

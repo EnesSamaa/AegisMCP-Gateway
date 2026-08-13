@@ -1,6 +1,12 @@
 //! WASI 0.2 PII (Personally Identifiable Information) Guardrail Plugin.
 
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, unsafe_code, missing_docs)]
+#![allow(
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery,
+    unsafe_code,
+    missing_docs
+)]
 
 wit_bindgen::generate!({
     world: "guardrail-policy",

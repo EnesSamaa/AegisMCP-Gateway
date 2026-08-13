@@ -20,8 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install nightly Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
