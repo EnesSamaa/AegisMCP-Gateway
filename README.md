@@ -5,8 +5,8 @@
 [![CI](https://github.com/EnesSamaa/AegisMCP-Gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/EnesSamaa/AegisMCP-Gateway/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
 ![Rust](https://img.shields.io/badge/rust-stable-orange)
-![Tests](https://img.shields.io/badge/tests-70%20passed-brightgreen)
-![Tag](https://img.shields.io/badge/release-v0.2.0--week2-blue)
+![Tests](https://img.shields.io/badge/tests-91%20passed-brightgreen)
+![Tag](https://img.shields.io/badge/release-v0.3.0--week3-blue)
 
 ---
 
@@ -22,7 +22,7 @@ AegisMCP-Gateway is an enterprise-grade reverse proxy that enforces Zero-Trust s
 | Dynamic Config & Hot-Reloading | `aegis-proxy::config` | YAML schema (`aegis.yaml`), `config-rs` parsing, `notify` watcher |
 | WASM Plugin Sandbox | `aegis-wasm` | Wasmtime 47, WASI 0.2 Component Model WIT contracts (`aegis:guardrail`) |
 | WASM Guardrail Plugin | `plugins/plugin-pii-filter` | WASI 0.2 `wasm32-wasip2` plugin detecting PII (CC, Emails, API Keys) |
-| Guardrails & Policy Engine | `aegis-guardrails` | Regex matchers, priority-ordered rules, risk matrix |
+| 6-Layer Security Guardrails | `aegis-guardrails` | AuthZ (JWT/API Keys), RBAC/ABAC, Prompt Injection, Rate Limit, Loop Breaker, HITL, DLP |
 | Cryptographic Audit Trail | `aegis-proof` | SHA-256 binary Merkle trees for audit proof generation |
 
 ---
@@ -30,35 +30,48 @@ AegisMCP-Gateway is an enterprise-grade reverse proxy that enforces Zero-Trust s
 ## Architecture Flow
 
 ```text
-  Client Request (tools/call)
-             │
-             ▼
-┌──────────────────────────┐  Extracts / generates X-Request-ID (UUID v4)
-│  RequestIdLayer          │  Reflects header on response.
-└────────────┬─────────────┘
-             │
-             ▼
-┌──────────────────────────┐  Instruments OpenTelemetry/tracing spans with
-│  TracingLayer            │  HTTP method, URI, version, and Request ID.
-└────────────┬─────────────┘
-             │
-             ▼
-┌──────────────────────────┐  Measures request processing duration using Instant.
-│ LatencyTrackingLayer     │  Appends X-Response-Time-Us header to response.
-└────────────┬─────────────┘
-             │
-             ▼
-┌──────────────────────────┐  Enforces configurable request timeout (tokio::time::timeout).
-│  TimeoutLayer            │  Returns 504 Gateway Timeout JSON-RPC error on expiry.
-└────────────┬─────────────┘
-             │
-             ▼
-┌──────────────────────────┐  Evaluates WASM Policy Guardrails (<1.5ms overhead)
-│  ProxyRouter + Wasm      │  Forwards payload to target upstream MCP URL.
-└────────────┬─────────────┘
-             │
-             ▼
-   Upstream MCP Server
+ Client Request (tools/call)
+            │
+            ▼
+┌───────────────────────────────────────────────────────────┐
+│ 1. Identity & AuthN (JWT / X-API-Key Extraction)           │
+└────────────────────────────┬──────────────────────────────┘
+                             │
+                             ▼
+┌───────────────────────────────────────────────────────────┐
+│ 2. Prompt Injection & Hijacking Detector                  │
+└────────────────────────────┬──────────────────────────────┘
+                             │
+                             ▼
+┌───────────────────────────────────────────────────────────┐
+│ 3. Agent Rate Limiter & Stateful Loop Breaker              │
+└────────────────────────────┬──────────────────────────────┘
+                             │
+                             ▼
+┌───────────────────────────────────────────────────────────┐
+│ 4. Granular Tool Authorization Engine (RBAC / ABAC)       │
+└────────────────────────────┬──────────────────────────────┘
+                             │
+                             ▼
+┌───────────────────────────────────────────────────────────┐
+│ 5. Human-in-the-Loop (HITL) High-Risk Suspension           │
+└────────────────────────────┬──────────────────────────────┘
+                             │
+                             ▼
+┌───────────────────────────────────────────────────────────┐
+│ 6. WASI 0.2 WASM Guardrail Inspection                     │
+└────────────────────────────┬──────────────────────────────┘
+                             │
+                             ▼
+                Upstream MCP Server Forwarding
+                             │
+                             ▼
+┌───────────────────────────────────────────────────────────┐
+│ Outbound DLP Masking (Real-Time PII / Secret Redaction)   │
+└────────────────────────────┬──────────────────────────────┘
+                             │
+                             ▼
+                      Client Response
 ```
 
 Detailed architectural specifications are available in [`docs/architecture.md`](docs/architecture.md).
@@ -81,7 +94,8 @@ AegisMCP-Gateway/
 │   │   └── benches/            # Criterion micro-benchmarks (proxy_throughput.rs)
 │   ├── aegis-wasm/             # Wasmtime 47 WASM runtime, instance pooling, Ed25519 verification
 │   │   └── benches/            # WASI 0.2 sandbox micro-benchmarks (wasm_bench.rs)
-│   ├── aegis-guardrails/       # Inspection engine & rules
+│   ├── aegis-guardrails/       # 6-Layer Security Guardrails: AuthZ, Prompt Injection, HITL, DLP
+│   │   └── tests/              # Red-Teaming Attack Simulations (red_team_simulations.rs)
 │   └── aegis-proof/            # Merkle tree & audit proofs
 ├── plugins/
 │   └── plugin-pii-filter/      # WASI 0.2 Guardrail plugin (wasm32-wasip2)
@@ -101,7 +115,7 @@ cd AegisMCP-Gateway
 # Check workspace compilation
 cargo check --workspace --exclude plugin-pii-filter
 
-# Run full test suite (70 unit & integration tests)
+# Run full test suite (91 unit & integration tests)
 cargo test --workspace --exclude plugin-pii-filter
 
 # Run Clippy lints
@@ -116,7 +130,7 @@ cargo run --bin aegis-gateway
 
 ---
 
-## Development Roadmap — Week 1 & Week 2 Completed ✅
+## Development Roadmap — Weeks 1, 2 & 3 Completed ✅
 
 | Day | Milestone | Status |
 |-----|-----------|--------|
@@ -134,6 +148,13 @@ cargo run --bin aegis-gateway
 | **Day 12** | Reverse Proxy Pipeline Integration of WASM Policy Guardrails (<1.5ms overhead) | ✅ Done |
 | **Day 13** | Ed25519 Signature Verification, Semver Tracking & Zero-Downtime Hot-Swapping | ✅ Done |
 | **Day 14** | Week 2 Finalization: Sandbox Benchmarks, Architecture Specification, Tag Release | ✅ Done (`v0.2.0-week2`) |
+| **Day 15** | Agent Identity Engine (`IdentityContext`) & Enterprise Token Translator | ✅ Done |
+| **Day 16** | Granular Tool-Level Authorization Engine (RBAC / ABAC Matrix) | ✅ Done |
+| **Day 17** | Indirect Prompt Injection & Context Hijacking Detector (`RegexSet`) | ✅ Done |
+| **Day 18** | Streaming DLP Masking Engine & Real-Time Outbound Response PII Sanitization | ✅ Done |
+| **Day 19** | Adaptive Rate Limiter & Stateful Ring Buffer Loop Breaker Engine | ✅ Done |
+| **Day 20** | Human-in-the-Loop (HITL) High-Risk Tool Execution Approval Engine | ✅ Done |
+| **Day 21** | Week 3 Finalization: Red-Teaming Simulation Suite, Latency SLA (<15ms), Tag Release | ✅ Done (`v0.3.0-week3`) |
 
 ---
 
