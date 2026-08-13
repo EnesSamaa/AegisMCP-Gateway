@@ -1,5 +1,6 @@
 //! High-throughput append-only audit ledger with lock-free mpsc queue.
 
+use crate::{error::ProofError, proof::AuditMerkleProof, tree::IncrementalMerkleTree};
 use aegis_core::AuditEntry;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -13,6 +14,7 @@ pub struct AuditLedger {
     tx: mpsc::UnboundedSender<AuditEntry>,
     entries: Arc<RwLock<Vec<AuditEntry>>>,
     by_request_id: Arc<RwLock<HashMap<String, usize>>>,
+    merkle_tree: IncrementalMerkleTree,
 }
 
 impl AuditLedger {
@@ -23,9 +25,11 @@ impl AuditLedger {
         let entries = Arc::new(RwLock::new(Vec::new()));
         let by_request_id = Arc::new(RwLock::new(HashMap::new()));
         let next_seq = Arc::new(AtomicU64::new(1));
+        let merkle_tree = IncrementalMerkleTree::new();
 
         let entries_clone = Arc::clone(&entries);
         let req_index_clone = Arc::clone(&by_request_id);
+        let tree_clone = merkle_tree.clone();
 
         tokio::spawn(async move {
             while let Some(entry) = rx.recv().await {
@@ -35,6 +39,7 @@ impl AuditLedger {
                     .write()
                     .await
                     .insert(entry.request_id.clone(), idx);
+                let _ = tree_clone.push_leaf_hex(&entry.payload_hash).await;
                 list.push(entry);
             }
         });
@@ -44,6 +49,7 @@ impl AuditLedger {
             tx,
             entries,
             by_request_id,
+            merkle_tree,
         }
     }
 
@@ -94,6 +100,79 @@ impl AuditLedger {
         } else {
             None
         }
+    }
+
+    /// Returns the active hex-encoded Merkle root hash.
+    pub async fn get_merkle_root(&self) -> Option<String> {
+        self.merkle_tree.root_hex().await
+    }
+
+    /// Generates a cryptographic Merkle inclusion proof for entry with `seq_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProofError`] if sequence ID is not found or proof generation fails.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn generate_proof_by_seq(&self, seq_id: u64) -> Result<AuditMerkleProof, ProofError> {
+        let (idx, leaf_hash) = {
+            let list = self.entries.read().await;
+            let (idx, entry) = list
+                .iter()
+                .enumerate()
+                .find(|(_, e)| e.seq_id == seq_id)
+                .ok_or_else(|| ProofError::IndexOutOfBounds {
+                    index: usize::try_from(seq_id).unwrap_or(usize::MAX),
+                    len: list.len(),
+                })?;
+            (idx, entry.payload_hash.clone())
+        };
+
+        let core_proof = self.merkle_tree.prove(idx).await?;
+        let root_hex = self.get_merkle_root().await.ok_or(ProofError::EmptyTree)?;
+
+        let sibling_hashes = core_proof.siblings.iter().map(|s| s.to_hex()).collect();
+
+        Ok(AuditMerkleProof::new(
+            idx,
+            leaf_hash,
+            sibling_hashes,
+            root_hex,
+        ))
+    }
+
+    /// Generates a cryptographic Merkle inclusion proof for entry with `request_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProofError`] if request ID is not found or proof generation fails.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn generate_proof_by_request_id(
+        &self,
+        request_id: &str,
+    ) -> Result<AuditMerkleProof, ProofError> {
+        let idx = {
+            let req_map = self.by_request_id.read().await;
+            *req_map
+                .get(request_id)
+                .ok_or(ProofError::IndexOutOfBounds { index: 0, len: 0 })?
+        };
+
+        let leaf_hash = {
+            let list = self.entries.read().await;
+            list[idx].payload_hash.clone()
+        };
+
+        let core_proof = self.merkle_tree.prove(idx).await?;
+        let root_hex = self.get_merkle_root().await.ok_or(ProofError::EmptyTree)?;
+
+        let sibling_hashes = core_proof.siblings.iter().map(|s| s.to_hex()).collect();
+
+        Ok(AuditMerkleProof::new(
+            idx,
+            leaf_hash,
+            sibling_hashes,
+            root_hex,
+        ))
     }
 
     /// Returns the total number of logged audit entries in the ledger.

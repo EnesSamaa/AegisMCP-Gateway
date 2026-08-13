@@ -18,4 +18,8 @@ pub enum ProofError {
         /// The current number of leaves.
         len: usize,
     },
+
+    /// Invalid hex string provided for SHA-256 digest parsing.
+    #[error("invalid digest hex string: {0}")]
+    InvalidDigestHex(String),
 }

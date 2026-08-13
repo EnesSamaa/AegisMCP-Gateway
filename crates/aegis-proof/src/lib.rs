@@ -15,8 +15,12 @@ pub mod error;
 pub mod hash;
 pub mod ledger;
 pub mod merkle;
+pub mod proof;
+pub mod tree;
 
 pub use error::ProofError;
 pub use hash::Sha256Digest;
 pub use ledger::AuditLedger;
 pub use merkle::{MerkleProof, MerkleTree};
+pub use proof::AuditMerkleProof;
+pub use tree::IncrementalMerkleTree;

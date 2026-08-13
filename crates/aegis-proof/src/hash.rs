@@ -1,5 +1,6 @@
 //! SHA-256 hashing utilities.
 
+use crate::ProofError;
 use sha2::{Digest, Sha256};
 
 /// A 32-byte SHA-256 digest.
@@ -16,6 +17,21 @@ impl Sha256Digest {
         let mut bytes = [0u8; 32];
         bytes.copy_from_slice(&result);
         Self(bytes)
+    }
+
+    /// Parse a 64-character hex string into a [`Sha256Digest`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProofError::InvalidDigestHex`] if parsing fails.
+    pub fn from_hex(s: &str) -> Result<Self, ProofError> {
+        let bytes = hex::decode(s).map_err(|_| ProofError::InvalidDigestHex(s.to_string()))?;
+        if bytes.len() != 32 {
+            return Err(ProofError::InvalidDigestHex(s.to_string()));
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&bytes);
+        Ok(Self(arr))
     }
 
     /// Combine two digests (for Merkle tree internal nodes).
