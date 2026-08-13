@@ -7,6 +7,7 @@ use crate::{
     middleware::{LatencyTrackingLayer, RequestIdLayer, TimeoutLayer, TracingLayer},
     router::ProxyRouter,
 };
+use aegis_guardrails::{IdentityExtractor, TokenTranslator};
 use aegis_wasm::PluginRunner;
 use hyper_util::{
     rt::TokioIo, server::conn::auto::Builder as ServerConnBuilder,
@@ -59,6 +60,28 @@ impl McpProxy {
     #[must_use]
     pub fn with_wasm_runner(self, runner: Arc<PluginRunner>) -> Self {
         let router = (*self.router).clone().with_wasm_runner(runner);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
+        }
+    }
+
+    /// Attaches an Agent Identity Extractor for authentication.
+    #[must_use]
+    pub fn with_identity_extractor(self, extractor: Arc<IdentityExtractor>) -> Self {
+        let router = (*self.router).clone().with_identity_extractor(extractor);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
+        }
+    }
+
+    /// Attaches an Enterprise Token Translator for credential mapping.
+    #[must_use]
+    pub fn with_token_translator(self, translator: Arc<TokenTranslator>) -> Self {
+        let router = (*self.router).clone().with_token_translator(translator);
         Self {
             config: self.config,
             router: Arc::new(router),

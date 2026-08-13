@@ -113,6 +113,18 @@ impl AgentIdentity {
         }
     }
 
+    /// Returns the agent client identifier.
+    #[must_use]
+    pub fn agent_id(&self) -> &str {
+        &self.client_id
+    }
+
+    /// Returns the agent role string.
+    #[must_use]
+    pub fn role(&self) -> &str {
+        &self.role
+    }
+
     /// Sets the tenant ID for this identity.
     #[must_use]
     pub fn with_tenant_id(mut self, tenant_id: impl Into<String>) -> Self {
@@ -188,6 +200,8 @@ mod tests {
             .with_permission("mcp:read")
             .with_permission("mcp:write");
 
+        assert_eq!(identity.agent_id(), "id-1");
+        assert_eq!(identity.role(), "admin");
         assert!(identity.has_permission("mcp:read"));
         assert!(identity.has_permission("mcp:write"));
         assert!(!identity.has_permission("mcp:execute"));

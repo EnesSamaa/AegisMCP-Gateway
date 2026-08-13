@@ -6,12 +6,13 @@ use crate::{
     sse::{apply_sse_headers, is_sse_request},
 };
 use aegis_core::{AgentIdentity, JsonRpcRequest, McpSessionContext, RequestId, SessionId, ToolCall};
+use aegis_guardrails::{IdentityContext, IdentityExtractor, TokenTranslator};
 use aegis_wasm::{build_inspection_context, HostDecision, PluginRunner};
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{
     body::Incoming,
-    header::{HeaderValue, HOST},
+    header::{HeaderValue, AUTHORIZATION, HOST},
     Request, Response, StatusCode,
 };
 use hyper_util::{
@@ -19,7 +20,7 @@ use hyper_util::{
     rt::TokioExecutor,
 };
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
@@ -30,6 +31,8 @@ pub struct ProxyRouter {
     config_rx: watch::Receiver<GatewayConfig>,
     fallback_upstream_url: String,
     wasm_runner: Option<Arc<PluginRunner>>,
+    identity_extractor: Option<Arc<IdentityExtractor>>,
+    token_translator: Option<Arc<TokenTranslator>>,
 }
 
 impl ProxyRouter {
@@ -47,6 +50,8 @@ impl ProxyRouter {
             config_rx,
             fallback_upstream_url: fallback_upstream,
             wasm_runner: None,
+            identity_extractor: None,
+            token_translator: None,
         }
     }
 
@@ -62,6 +67,8 @@ impl ProxyRouter {
             config_rx,
             fallback_upstream_url: upstream_url.into(),
             wasm_runner: None,
+            identity_extractor: None,
+            token_translator: None,
         }
     }
 
@@ -72,14 +79,34 @@ impl ProxyRouter {
         self
     }
 
+    /// Attaches an Agent Identity Extractor for authentication.
+    #[must_use]
+    pub fn with_identity_extractor(mut self, extractor: Arc<IdentityExtractor>) -> Self {
+        self.identity_extractor = Some(extractor);
+        self
+    }
+
+    /// Attaches an Enterprise Token Translator for credential mapping.
+    #[must_use]
+    pub fn with_token_translator(mut self, translator: Arc<TokenTranslator>) -> Self {
+        self.token_translator = Some(translator);
+        self
+    }
+
     /// Evaluates WASM policy guardrails for an incoming JSON-RPC request.
     async fn evaluate_wasm_guardrail(
         &self,
         rpc_req: &JsonRpcRequest,
+        identity_ctx: Option<&IdentityContext>,
     ) -> Option<Response<BoxBody<Bytes, hyper::Error>>> {
         let runner = self.wasm_runner.as_ref()?;
-        let identity = AgentIdentity::new("client-proxy", "ProxyAgent", "analyst");
-        let session = McpSessionContext::new(SessionId::new(), identity, 1_700_000_000_000);
+
+        let agent = identity_ctx.map_or_else(
+            || AgentIdentity::new("client-proxy", "ProxyAgent", "analyst"),
+            |ctx| ctx.identity.clone(),
+        );
+
+        let session = McpSessionContext::new(SessionId::new(), agent, 1_700_000_000_000);
         let req_id = RequestId::new();
         let tool_call = ToolCall::new(&rpc_req.method, rpc_req.params.clone());
 
@@ -117,6 +144,7 @@ impl ProxyRouter {
     /// # Errors
     ///
     /// Returns [`ProxyError`] if forwarding or buffering fails.
+    #[allow(clippy::too_many_lines)]
     pub async fn handle_request(
         &self,
         req: Request<Incoming>,
@@ -153,6 +181,63 @@ impl ProxyRouter {
                 )
         };
 
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+
+        // Extract auth headers
+        let auth_header_str = req
+            .headers()
+            .get(AUTHORIZATION)
+            .and_then(|v| v.to_str().ok());
+        let api_key_str = req
+            .headers()
+            .get("X-API-Key")
+            .and_then(|v| v.to_str().ok());
+
+        // Extract IdentityContext if Extractor present
+        let mut extracted_identity = None;
+        if let Some(extractor) = &self.identity_extractor {
+            match extractor.extract(auth_header_str, api_key_str, now_secs).await {
+                Ok(ctx) => {
+                    info!(
+                        agent_id = %ctx.identity.agent_id(),
+                        tenant = %ctx.tenant_id,
+                        role = %ctx.identity.role(),
+                        "Agent Identity Extracted Successfully"
+                    );
+                    extracted_identity = Some(ctx);
+                }
+                Err(err) => {
+                    warn!(error = %err, "Agent Authentication Failed");
+                    let err_body = Full::new(Bytes::from(format!(
+                        r#"{{"jsonrpc":"2.0","error":{{"code":-32002,"message":"Authentication Failed: {err}"}},"id":null}}"#
+                    )))
+                    .map_err(|_| -> hyper::Error { unreachable!() })
+                    .boxed();
+
+                    return Ok(Response::builder()
+                        .status(StatusCode::UNAUTHORIZED)
+                        .header(hyper::header::CONTENT_TYPE, "application/json")
+                        .body(err_body)?);
+                }
+            }
+        }
+
+        // Perform Enterprise Token Translation if enabled
+        let mut translated_upstream_token = None;
+        if let Some(translator) = &self.token_translator {
+            if let Some(ctx) = &extracted_identity {
+                if let Ok(translated) = translator.translate(ctx, &upstream_target_url, now_secs).await {
+                    info!(
+                        upstream = %upstream_target_url,
+                        "Enterprise Token Translated for Upstream MCP Server"
+                    );
+                    translated_upstream_token = Some(translated.token);
+                }
+            }
+        }
+
         // Extract parts and body
         let (parts, incoming_body) = req.into_parts();
 
@@ -168,7 +253,10 @@ impl ProxyRouter {
                     "Intercepted MCP JSON-RPC Request"
                 );
 
-                if let Some(deny_resp) = self.evaluate_wasm_guardrail(&rpc_req).await {
+                if let Some(deny_resp) = self
+                    .evaluate_wasm_guardrail(&rpc_req, extracted_identity.as_ref())
+                    .await
+                {
                     return Ok(deny_resp);
                 }
             } else {
@@ -189,13 +277,22 @@ impl ProxyRouter {
             .method(parts.method)
             .uri(&target_uri);
 
-        // Copy headers
+        // Copy headers & inject translated upstream credential
         if let Some(headers_mut) = fwd_req.headers_mut() {
             for (key, value) in &parts.headers {
-                if key != HOST {
+                if key != HOST && key != AUTHORIZATION {
                     headers_mut.insert(key, value.clone());
                 }
             }
+
+            if let Some(token) = translated_upstream_token {
+                if let Ok(auth_val) = HeaderValue::from_str(&format!("Bearer {token}")) {
+                    headers_mut.insert(AUTHORIZATION, auth_val);
+                }
+            } else if let Some(orig_auth) = parts.headers.get(AUTHORIZATION) {
+                headers_mut.insert(AUTHORIZATION, orig_auth.clone());
+            }
+
             if let Ok(uri_parsed) = target_uri.parse::<hyper::Uri>() {
                 if let Some(host_str) = uri_parsed.host() {
                     if let Ok(host_header) = HeaderValue::from_str(host_str) {

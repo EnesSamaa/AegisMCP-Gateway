@@ -46,6 +46,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"]
 # Security & Crypto
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 semver        = { version = "1.0" }
+jsonwebtoken  = { version = "9.3" }
 
 # Error handling
 thiserror = { version = "2.0" }
