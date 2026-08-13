@@ -7,7 +7,7 @@ use crate::{
     middleware::{LatencyTrackingLayer, RequestIdLayer, TimeoutLayer, TracingLayer},
     router::ProxyRouter,
 };
-use aegis_guardrails::{IdentityExtractor, TokenTranslator};
+use aegis_guardrails::{IdentityExtractor, TokenTranslator, ToolAuthorizationEngine};
 use aegis_wasm::PluginRunner;
 use hyper_util::{
     rt::TokioIo, server::conn::auto::Builder as ServerConnBuilder,
@@ -82,6 +82,17 @@ impl McpProxy {
     #[must_use]
     pub fn with_token_translator(self, translator: Arc<TokenTranslator>) -> Self {
         let router = (*self.router).clone().with_token_translator(translator);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
+        }
+    }
+
+    /// Attaches a Granular Tool Authorization Engine for RBAC/ABAC checks.
+    #[must_use]
+    pub fn with_tool_authz_engine(self, engine: Arc<ToolAuthorizationEngine>) -> Self {
+        let router = (*self.router).clone().with_tool_authz_engine(engine);
         Self {
             config: self.config,
             router: Arc::new(router),

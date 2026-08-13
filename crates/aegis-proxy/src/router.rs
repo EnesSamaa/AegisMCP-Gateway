@@ -6,7 +6,10 @@ use crate::{
     sse::{apply_sse_headers, is_sse_request},
 };
 use aegis_core::{AgentIdentity, JsonRpcRequest, McpSessionContext, RequestId, SessionId, ToolCall};
-use aegis_guardrails::{IdentityContext, IdentityExtractor, TokenTranslator};
+use aegis_guardrails::{
+    IdentityContext, IdentityExtractor, PolicyDecision as AuthzDecision, TokenTranslator,
+    ToolAuthorizationEngine,
+};
 use aegis_wasm::{build_inspection_context, HostDecision, PluginRunner};
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
@@ -33,6 +36,7 @@ pub struct ProxyRouter {
     wasm_runner: Option<Arc<PluginRunner>>,
     identity_extractor: Option<Arc<IdentityExtractor>>,
     token_translator: Option<Arc<TokenTranslator>>,
+    tool_authz_engine: Option<Arc<ToolAuthorizationEngine>>,
 }
 
 impl ProxyRouter {
@@ -52,6 +56,7 @@ impl ProxyRouter {
             wasm_runner: None,
             identity_extractor: None,
             token_translator: None,
+            tool_authz_engine: None,
         }
     }
 
@@ -69,6 +74,7 @@ impl ProxyRouter {
             wasm_runner: None,
             identity_extractor: None,
             token_translator: None,
+            tool_authz_engine: None,
         }
     }
 
@@ -90,6 +96,13 @@ impl ProxyRouter {
     #[must_use]
     pub fn with_token_translator(mut self, translator: Arc<TokenTranslator>) -> Self {
         self.token_translator = Some(translator);
+        self
+    }
+
+    /// Attaches a Granular Tool Authorization Engine for RBAC/ABAC checks.
+    #[must_use]
+    pub fn with_tool_authz_engine(mut self, engine: Arc<ToolAuthorizationEngine>) -> Self {
+        self.tool_authz_engine = Some(engine);
         self
     }
 
@@ -144,7 +157,7 @@ impl ProxyRouter {
     /// # Errors
     ///
     /// Returns [`ProxyError`] if forwarding or buffering fails.
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::option_if_let_else)]
     pub async fn handle_request(
         &self,
         req: Request<Incoming>,
@@ -244,7 +257,7 @@ impl ProxyRouter {
         // Collect body for inspection
         let body_bytes = incoming_body.collect().await?.to_bytes();
 
-        // Inspect JSON-RPC & Evaluate WASM Policy Guardrails if enabled
+        // Inspect JSON-RPC & Evaluate Tool RBAC/ABAC and WASM Policy Guardrails if enabled
         if !body_bytes.is_empty() {
             if let Ok(rpc_req) = serde_json::from_slice::<JsonRpcRequest>(&body_bytes) {
                 info!(
@@ -253,6 +266,41 @@ impl ProxyRouter {
                     "Intercepted MCP JSON-RPC Request"
                 );
 
+                // 1. RBAC/ABAC Tool Authorization Check
+                if let Some(authz_engine) = &self.tool_authz_engine {
+                    let dummy_ctx;
+                    let identity_ref = if let Some(ctx) = &extracted_identity {
+                        ctx
+                    } else {
+                        dummy_ctx = IdentityContext {
+                            identity: AgentIdentity::new("anonymous", "AnonymousAgent", "default"),
+                            tenant_id: "default".to_string(),
+                            permissions: vec![],
+                            session_scope: "anonymous".to_string(),
+                            expires_at: u64::MAX,
+                        };
+                        &dummy_ctx
+                    };
+
+                    let tool_call = ToolCall::new(&rpc_req.method, rpc_req.params.clone());
+                    if let AuthzDecision::Deny(reason) = authz_engine.check_authorization(identity_ref, &tool_call).await {
+                        warn!(reason = %reason, "Tool Authorization Engine Denied Call");
+                        let json_id = serde_json::to_string(&rpc_req.id).unwrap_or_else(|_| "null".to_string());
+                        let err_json = format!(
+                            r#"{{"jsonrpc":"2.0","error":{{"code":-32001,"message":"Unauthorized Tool Call: {reason}"}},"id":{json_id}}}"#
+                        );
+                        let err_body = Full::new(Bytes::from(err_json))
+                            .map_err(|_| -> hyper::Error { unreachable!() })
+                            .boxed();
+
+                        return Ok(Response::builder()
+                            .status(StatusCode::OK)
+                            .header(hyper::header::CONTENT_TYPE, "application/json")
+                            .body(err_body)?);
+                    }
+                }
+
+                // 2. WASM Policy Guardrails Check
                 if let Some(deny_resp) = self
                     .evaluate_wasm_guardrail(&rpc_req, extracted_identity.as_ref())
                     .await
