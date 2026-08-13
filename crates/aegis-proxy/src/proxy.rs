@@ -8,8 +8,8 @@ use crate::{
     router::ProxyRouter,
 };
 use aegis_guardrails::{
-    DlpMaskingEngine, IdentityExtractor, PromptInjectionDetector, TokenTranslator,
-    ToolAuthorizationEngine,
+    AgentRateLimiter, DlpMaskingEngine, IdentityExtractor, LoopBreakerEngine,
+    PromptInjectionDetector, TokenTranslator, ToolAuthorizationEngine,
 };
 use aegis_wasm::PluginRunner;
 use hyper_util::{
@@ -119,6 +119,28 @@ impl McpProxy {
     #[must_use]
     pub fn with_dlp_engine(self, engine: Arc<DlpMaskingEngine>) -> Self {
         let router = (*self.router).clone().with_dlp_engine(engine);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
+        }
+    }
+
+    /// Attaches an Agent Rate Limiter for request quota enforcement.
+    #[must_use]
+    pub fn with_rate_limiter(self, limiter: Arc<AgentRateLimiter>) -> Self {
+        let router = (*self.router).clone().with_rate_limiter(limiter);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
+        }
+    }
+
+    /// Attaches a Loop Breaker Engine for runaway agent execution loop prevention.
+    #[must_use]
+    pub fn with_loop_breaker(self, breaker: Arc<LoopBreakerEngine>) -> Self {
+        let router = (*self.router).clone().with_loop_breaker(breaker);
         Self {
             config: self.config,
             router: Arc::new(router),

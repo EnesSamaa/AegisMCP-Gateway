@@ -9,8 +9,8 @@ use aegis_core::{
     AgentIdentity, JsonRpcRequest, McpSessionContext, RequestId, SessionId, ToolCall,
 };
 use aegis_guardrails::{
-    DlpMaskingEngine, IdentityContext, IdentityExtractor, InjectionSeverity,
-    PolicyDecision as AuthzDecision, PromptInjectionDetector, TokenTranslator,
+    AgentRateLimiter, DlpMaskingEngine, IdentityContext, IdentityExtractor, InjectionSeverity,
+    LoopBreakerEngine, PolicyDecision as AuthzDecision, PromptInjectionDetector, TokenTranslator,
     ToolAuthorizationEngine,
 };
 use aegis_wasm::{build_inspection_context, HostDecision, PluginRunner};
@@ -42,6 +42,8 @@ pub struct ProxyRouter {
     tool_authz_engine: Option<Arc<ToolAuthorizationEngine>>,
     prompt_injection_detector: Option<Arc<PromptInjectionDetector>>,
     dlp_engine: Option<Arc<DlpMaskingEngine>>,
+    rate_limiter: Option<Arc<AgentRateLimiter>>,
+    loop_breaker: Option<Arc<LoopBreakerEngine>>,
 }
 
 impl ProxyRouter {
@@ -66,6 +68,8 @@ impl ProxyRouter {
             tool_authz_engine: None,
             prompt_injection_detector: None,
             dlp_engine: None,
+            rate_limiter: None,
+            loop_breaker: None,
         }
     }
 
@@ -86,6 +90,8 @@ impl ProxyRouter {
             tool_authz_engine: None,
             prompt_injection_detector: None,
             dlp_engine: None,
+            rate_limiter: None,
+            loop_breaker: None,
         }
     }
 
@@ -131,6 +137,20 @@ impl ProxyRouter {
     #[must_use]
     pub fn with_dlp_engine(mut self, engine: Arc<DlpMaskingEngine>) -> Self {
         self.dlp_engine = Some(engine);
+        self
+    }
+
+    /// Attaches an Agent Rate Limiter for request quota enforcement.
+    #[must_use]
+    pub fn with_rate_limiter(mut self, limiter: Arc<AgentRateLimiter>) -> Self {
+        self.rate_limiter = Some(limiter);
+        self
+    }
+
+    /// Attaches a Loop Breaker Engine for runaway agent execution loop prevention.
+    #[must_use]
+    pub fn with_loop_breaker(mut self, breaker: Arc<LoopBreakerEngine>) -> Self {
+        self.loop_breaker = Some(breaker);
         self
     }
 
@@ -269,6 +289,27 @@ impl ProxyRouter {
             }
         }
 
+        // Rate Limiter Check
+        if let Some(limiter) = &self.rate_limiter {
+            let agent = extracted_identity.as_ref().map_or_else(
+                || AgentIdentity::new("anonymous", "AnonymousAgent", "default"),
+                |ctx| ctx.identity.clone(),
+            );
+            let rate_res = limiter.check_rate_limit(&agent, now_secs).await;
+            if !rate_res.allowed {
+                warn!(agent_id = %agent.agent_id(), "Rate Limit Exceeded — Request Rejected");
+                let err_json = r#"{"jsonrpc":"2.0","error":{"code":-32004,"message":"Rate Limit Exceeded: Max request quota exceeded for agent"},"id":null}"#;
+                let err_body = Full::new(Bytes::from(err_json))
+                    .map_err(|_| -> hyper::Error { unreachable!() })
+                    .boxed();
+
+                return Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .header(hyper::header::CONTENT_TYPE, "application/json")
+                    .body(err_body)?);
+            }
+        }
+
         // Perform Enterprise Token Translation if enabled
         let mut translated_upstream_token = None;
         if let Some(translator) = &self.token_translator {
@@ -323,7 +364,37 @@ impl ProxyRouter {
                     "Intercepted MCP JSON-RPC Request"
                 );
 
-                // 2. RBAC/ABAC Tool Authorization Check
+                let tool_call = ToolCall::new(&rpc_req.method, rpc_req.params.clone());
+
+                // 2. Stateful Loop Breaker Check
+                if let Some(breaker) = &self.loop_breaker {
+                    let session_key = extracted_identity.as_ref().map_or_else(
+                        || "default-session".to_string(),
+                        |ctx| ctx.identity.agent_id().to_string(),
+                    );
+
+                    if let Err(loop_err) = breaker
+                        .check_and_record(&session_key, &tool_call, now_secs)
+                        .await
+                    {
+                        warn!(reason = %loop_err, "Stateful Loop Breaker Short-Circuited Request");
+                        let json_id = serde_json::to_string(&rpc_req.id)
+                            .unwrap_or_else(|_| "null".to_string());
+                        let err_json = format!(
+                            r#"{{"jsonrpc":"2.0","error":{{"code":-32004,"message":"Execution Loop Detected: {loop_err}"}},"id":{json_id}}}"#
+                        );
+                        let err_body = Full::new(Bytes::from(err_json))
+                            .map_err(|_| -> hyper::Error { unreachable!() })
+                            .boxed();
+
+                        return Ok(Response::builder()
+                            .status(StatusCode::OK)
+                            .header(hyper::header::CONTENT_TYPE, "application/json")
+                            .body(err_body)?);
+                    }
+                }
+
+                // 3. RBAC/ABAC Tool Authorization Check
                 if let Some(authz_engine) = &self.tool_authz_engine {
                     let dummy_ctx;
                     let identity_ref = if let Some(ctx) = &extracted_identity {
@@ -339,7 +410,6 @@ impl ProxyRouter {
                         &dummy_ctx
                     };
 
-                    let tool_call = ToolCall::new(&rpc_req.method, rpc_req.params.clone());
                     if let AuthzDecision::Deny(reason) = authz_engine
                         .check_authorization(identity_ref, &tool_call)
                         .await
@@ -361,7 +431,7 @@ impl ProxyRouter {
                     }
                 }
 
-                // 3. WASM Policy Guardrails Check
+                // 4. WASM Policy Guardrails Check
                 if let Some(deny_resp) = self
                     .evaluate_wasm_guardrail(&rpc_req, extracted_identity.as_ref())
                     .await
