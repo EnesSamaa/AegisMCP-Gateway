@@ -3,9 +3,7 @@
 use aegis_proxy::{McpProxy, ProxyConfig};
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
-use hyper::{
-    body::Incoming, service::service_fn, Request, Response, StatusCode,
-};
+use hyper::{body::Incoming, service::service_fn, Request, Response, StatusCode};
 use hyper_util::{
     client::legacy::Client, rt::TokioExecutor, rt::TokioIo,
     server::conn::auto::Builder as ServerBuilder,
@@ -33,7 +31,8 @@ async fn run_mock_upstream(listener: TcpListener) {
             let service = service_fn(move |req: Request<Incoming>| async move {
                 let path = req.uri().path();
                 if path == "/mcp" {
-                    let body = full_body(r#"{"jsonrpc":"2.0","result":{"status":"success"},"id":1}"#);
+                    let body =
+                        full_body(r#"{"jsonrpc":"2.0","result":{"status":"success"},"id":1}"#);
                     Ok::<_, hyper::Error>(
                         Response::builder()
                             .header("content-type", "application/json")

@@ -3,11 +3,10 @@
 use aegis_proxy::{McpProxy, ProxyConfig};
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
-use hyper::{
-    body::Incoming, service::service_fn, Request, Response, StatusCode,
-};
+use hyper::{body::Incoming, service::service_fn, Request, Response, StatusCode};
 use hyper_util::{
-    client::legacy::Client, rt::TokioExecutor, rt::TokioIo, server::conn::auto::Builder as ServerBuilder,
+    client::legacy::Client, rt::TokioExecutor, rt::TokioIo,
+    server::conn::auto::Builder as ServerBuilder,
 };
 use tokio::{net::TcpListener, sync::oneshot};
 
@@ -103,7 +102,9 @@ async fn test_proxy_health_and_mcp_forwarding() {
         .method("POST")
         .uri(format!("http://{proxy_addr}/mcp"))
         .header("content-type", "application/json")
-        .body(full_body(r#"{"jsonrpc":"2.0","method":"tools/list","id":1}"#))
+        .body(full_body(
+            r#"{"jsonrpc":"2.0","method":"tools/list","id":1}"#,
+        ))
         .unwrap();
 
     let resp_mcp = client.request(req_mcp).await.unwrap();

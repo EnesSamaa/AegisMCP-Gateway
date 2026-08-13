@@ -14,6 +14,7 @@
 pub mod engine;
 pub mod error;
 pub mod identity;
+pub mod injection;
 pub mod matcher;
 pub mod rule;
 pub mod token_translation;
@@ -22,6 +23,7 @@ pub mod tool_authz;
 pub use engine::GuardrailEngine;
 pub use error::GuardrailError;
 pub use identity::{AgentJwtClaims, IdentityContext, IdentityExtractor};
+pub use injection::{InjectionScanResult, InjectionSeverity, PromptInjectionDetector};
 pub use rule::{Action, Rule, RuleId};
 pub use token_translation::{TokenTranslator, UpstreamCredential};
 pub use tool_authz::{PolicyDecision, ToolAuthorizationEngine, ToolParamPolicy};

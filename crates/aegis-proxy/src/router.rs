@@ -5,10 +5,12 @@ use crate::{
     error::ProxyError,
     sse::{apply_sse_headers, is_sse_request},
 };
-use aegis_core::{AgentIdentity, JsonRpcRequest, McpSessionContext, RequestId, SessionId, ToolCall};
+use aegis_core::{
+    AgentIdentity, JsonRpcRequest, McpSessionContext, RequestId, SessionId, ToolCall,
+};
 use aegis_guardrails::{
-    IdentityContext, IdentityExtractor, PolicyDecision as AuthzDecision, TokenTranslator,
-    ToolAuthorizationEngine,
+    IdentityContext, IdentityExtractor, InjectionSeverity, PolicyDecision as AuthzDecision,
+    PromptInjectionDetector, TokenTranslator, ToolAuthorizationEngine,
 };
 use aegis_wasm::{build_inspection_context, HostDecision, PluginRunner};
 use bytes::Bytes;
@@ -37,6 +39,7 @@ pub struct ProxyRouter {
     identity_extractor: Option<Arc<IdentityExtractor>>,
     token_translator: Option<Arc<TokenTranslator>>,
     tool_authz_engine: Option<Arc<ToolAuthorizationEngine>>,
+    prompt_injection_detector: Option<Arc<PromptInjectionDetector>>,
 }
 
 impl ProxyRouter {
@@ -46,7 +49,9 @@ impl ProxyRouter {
         let client = Client::builder(TokioExecutor::new()).build_http();
         let fallback_upstream = upstream_url.into();
         let mut default_cfg = GatewayConfig::default();
-        default_cfg.routes[0].upstream_url.clone_from(&fallback_upstream);
+        default_cfg.routes[0]
+            .upstream_url
+            .clone_from(&fallback_upstream);
         let (_, config_rx) = watch::channel(default_cfg);
 
         Self {
@@ -57,6 +62,7 @@ impl ProxyRouter {
             identity_extractor: None,
             token_translator: None,
             tool_authz_engine: None,
+            prompt_injection_detector: None,
         }
     }
 
@@ -75,6 +81,7 @@ impl ProxyRouter {
             identity_extractor: None,
             token_translator: None,
             tool_authz_engine: None,
+            prompt_injection_detector: None,
         }
     }
 
@@ -106,6 +113,16 @@ impl ProxyRouter {
         self
     }
 
+    /// Attaches a Prompt Injection Detector for context hijacking inspection.
+    #[must_use]
+    pub fn with_prompt_injection_detector(
+        mut self,
+        detector: Arc<PromptInjectionDetector>,
+    ) -> Self {
+        self.prompt_injection_detector = Some(detector);
+        self
+    }
+
     /// Evaluates WASM policy guardrails for an incoming JSON-RPC request.
     async fn evaluate_wasm_guardrail(
         &self,
@@ -125,12 +142,16 @@ impl ProxyRouter {
 
         let wit_ctx = build_inspection_context(&session, req_id, &tool_call);
 
-        match runner.evaluate_concurrently(&wit_ctx, Duration::from_millis(500)).await {
+        match runner
+            .evaluate_concurrently(&wit_ctx, Duration::from_millis(500))
+            .await
+        {
             Ok(summary) => match summary.decision {
                 HostDecision::Allow | HostDecision::Modify(_) => None,
                 HostDecision::Deny(reason) => {
                     warn!(reason = %reason, "WASM Policy Evaluation Denied Request");
-                    let json_id = serde_json::to_string(&rpc_req.id).unwrap_or_else(|_| "null".to_string());
+                    let json_id =
+                        serde_json::to_string(&rpc_req.id).unwrap_or_else(|_| "null".to_string());
                     let err_json = format!(
                         r#"{{"jsonrpc":"2.0","error":{{"code":-32001,"message":"Security Policy Denial: {reason}"}},"id":{json_id}}}"#
                     );
@@ -203,15 +224,15 @@ impl ProxyRouter {
             .headers()
             .get(AUTHORIZATION)
             .and_then(|v| v.to_str().ok());
-        let api_key_str = req
-            .headers()
-            .get("X-API-Key")
-            .and_then(|v| v.to_str().ok());
+        let api_key_str = req.headers().get("X-API-Key").and_then(|v| v.to_str().ok());
 
         // Extract IdentityContext if Extractor present
         let mut extracted_identity = None;
         if let Some(extractor) = &self.identity_extractor {
-            match extractor.extract(auth_header_str, api_key_str, now_secs).await {
+            match extractor
+                .extract(auth_header_str, api_key_str, now_secs)
+                .await
+            {
                 Ok(ctx) => {
                     info!(
                         agent_id = %ctx.identity.agent_id(),
@@ -241,7 +262,10 @@ impl ProxyRouter {
         let mut translated_upstream_token = None;
         if let Some(translator) = &self.token_translator {
             if let Some(ctx) = &extracted_identity {
-                if let Ok(translated) = translator.translate(ctx, &upstream_target_url, now_secs).await {
+                if let Ok(translated) = translator
+                    .translate(ctx, &upstream_target_url, now_secs)
+                    .await
+                {
                     info!(
                         upstream = %upstream_target_url,
                         "Enterprise Token Translated for Upstream MCP Server"
@@ -257,8 +281,30 @@ impl ProxyRouter {
         // Collect body for inspection
         let body_bytes = incoming_body.collect().await?.to_bytes();
 
-        // Inspect JSON-RPC & Evaluate Tool RBAC/ABAC and WASM Policy Guardrails if enabled
+        // Inspect prompt injection & JSON-RPC payload
         if !body_bytes.is_empty() {
+            let body_str = String::from_utf8_lossy(&body_bytes);
+
+            // 1. Prompt Injection Scanning
+            if let Some(detector) = &self.prompt_injection_detector {
+                let scan_res = detector.scan_payload(&body_str);
+                if scan_res.severity == InjectionSeverity::CriticalInjection {
+                    warn!(signatures = ?scan_res.matched_signatures, "Prompt Injection Detector Short-Circuited Request");
+                    let sigs = scan_res.matched_signatures.join(", ");
+                    let err_json = format!(
+                        r#"{{"jsonrpc":"2.0","error":{{"code":-32003,"message":"Critical Prompt Injection Attack Detected: {sigs}"}},"id":null}}"#
+                    );
+                    let err_body = Full::new(Bytes::from(err_json))
+                        .map_err(|_| -> hyper::Error { unreachable!() })
+                        .boxed();
+
+                    return Ok(Response::builder()
+                        .status(StatusCode::OK)
+                        .header(hyper::header::CONTENT_TYPE, "application/json")
+                        .body(err_body)?);
+                }
+            }
+
             if let Ok(rpc_req) = serde_json::from_slice::<JsonRpcRequest>(&body_bytes) {
                 info!(
                     method = %rpc_req.method,
@@ -266,7 +312,7 @@ impl ProxyRouter {
                     "Intercepted MCP JSON-RPC Request"
                 );
 
-                // 1. RBAC/ABAC Tool Authorization Check
+                // 2. RBAC/ABAC Tool Authorization Check
                 if let Some(authz_engine) = &self.tool_authz_engine {
                     let dummy_ctx;
                     let identity_ref = if let Some(ctx) = &extracted_identity {
@@ -283,9 +329,13 @@ impl ProxyRouter {
                     };
 
                     let tool_call = ToolCall::new(&rpc_req.method, rpc_req.params.clone());
-                    if let AuthzDecision::Deny(reason) = authz_engine.check_authorization(identity_ref, &tool_call).await {
+                    if let AuthzDecision::Deny(reason) = authz_engine
+                        .check_authorization(identity_ref, &tool_call)
+                        .await
+                    {
                         warn!(reason = %reason, "Tool Authorization Engine Denied Call");
-                        let json_id = serde_json::to_string(&rpc_req.id).unwrap_or_else(|_| "null".to_string());
+                        let json_id = serde_json::to_string(&rpc_req.id)
+                            .unwrap_or_else(|_| "null".to_string());
                         let err_json = format!(
                             r#"{{"jsonrpc":"2.0","error":{{"code":-32001,"message":"Unauthorized Tool Call: {reason}"}},"id":{json_id}}}"#
                         );
@@ -300,7 +350,7 @@ impl ProxyRouter {
                     }
                 }
 
-                // 2. WASM Policy Guardrails Check
+                // 3. WASM Policy Guardrails Check
                 if let Some(deny_resp) = self
                     .evaluate_wasm_guardrail(&rpc_req, extracted_identity.as_ref())
                     .await
@@ -321,9 +371,7 @@ impl ProxyRouter {
 
         debug!(target = %target_uri, is_sse = is_sse, "Forwarding request to upstream");
 
-        let mut fwd_req = Request::builder()
-            .method(parts.method)
-            .uri(&target_uri);
+        let mut fwd_req = Request::builder().method(parts.method).uri(&target_uri);
 
         // Copy headers & inject translated upstream credential
         if let Some(headers_mut) = fwd_req.headers_mut() {

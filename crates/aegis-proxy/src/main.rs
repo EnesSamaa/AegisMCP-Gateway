@@ -27,7 +27,10 @@ async fn main() -> Result<()> {
     // Start background file watcher for hot-reloading
     let _watcher = match config_manager.start_watcher() {
         Ok(w) => {
-            info!("Dynamic configuration hot-reloader active for {}", config_path.display());
+            info!(
+                "Dynamic configuration hot-reloader active for {}",
+                config_path.display()
+            );
             Some(w)
         }
         Err(e) => {

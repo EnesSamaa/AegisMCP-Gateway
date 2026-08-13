@@ -1,9 +1,7 @@
 #![allow(missing_docs)]
 
 use aegis_core::{AgentIdentity, ToolCall};
-use aegis_guardrails::{
-    IdentityContext, PolicyDecision, ToolAuthorizationEngine, ToolParamPolicy,
-};
+use aegis_guardrails::{IdentityContext, PolicyDecision, ToolAuthorizationEngine, ToolParamPolicy};
 
 fn make_ctx(role: &str) -> IdentityContext {
     IdentityContext {
@@ -19,9 +17,7 @@ fn make_ctx(role: &str) -> IdentityContext {
 async fn test_tool_rbac_allowed_and_denied_roles() {
     let authz = ToolAuthorizationEngine::new();
 
-    authz
-        .add_role_policy("admin", vec!["*".to_string()])
-        .await;
+    authz.add_role_policy("admin", vec!["*".to_string()]).await;
     authz
         .add_role_policy(
             "developer",
@@ -41,7 +37,9 @@ async fn test_tool_rbac_allowed_and_denied_roles() {
         PolicyDecision::Allow
     );
     assert_eq!(
-        authz.check_authorization(&admin_ctx, &delete_branch_tool).await,
+        authz
+            .check_authorization(&admin_ctx, &delete_branch_tool)
+            .await,
         PolicyDecision::Allow
     );
 
@@ -51,7 +49,9 @@ async fn test_tool_rbac_allowed_and_denied_roles() {
         PolicyDecision::Allow
     );
     assert!(matches!(
-        authz.check_authorization(&dev_ctx, &delete_branch_tool).await,
+        authz
+            .check_authorization(&dev_ctx, &delete_branch_tool)
+            .await,
         PolicyDecision::Deny(_)
     ));
 }
@@ -67,7 +67,11 @@ async fn test_tool_abac_parameter_restrictions() {
     authz
         .add_param_policy(ToolParamPolicy {
             tool_name: "db_query".to_string(),
-            denied_patterns: vec!["DROP".to_string(), "DELETE".to_string(), "TRUNCATE".to_string()],
+            denied_patterns: vec![
+                "DROP".to_string(),
+                "DELETE".to_string(),
+                "TRUNCATE".to_string(),
+            ],
             required_patterns: vec!["SELECT".to_string()],
         })
         .await;

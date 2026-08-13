@@ -7,11 +7,12 @@ use crate::{
     middleware::{LatencyTrackingLayer, RequestIdLayer, TimeoutLayer, TracingLayer},
     router::ProxyRouter,
 };
-use aegis_guardrails::{IdentityExtractor, TokenTranslator, ToolAuthorizationEngine};
+use aegis_guardrails::{
+    IdentityExtractor, PromptInjectionDetector, TokenTranslator, ToolAuthorizationEngine,
+};
 use aegis_wasm::PluginRunner;
 use hyper_util::{
-    rt::TokioIo, server::conn::auto::Builder as ServerConnBuilder,
-    service::TowerToHyperService,
+    rt::TokioIo, server::conn::auto::Builder as ServerConnBuilder, service::TowerToHyperService,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -93,6 +94,19 @@ impl McpProxy {
     #[must_use]
     pub fn with_tool_authz_engine(self, engine: Arc<ToolAuthorizationEngine>) -> Self {
         let router = (*self.router).clone().with_tool_authz_engine(engine);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
+        }
+    }
+
+    /// Attaches a Prompt Injection Detector for context hijacking inspection.
+    #[must_use]
+    pub fn with_prompt_injection_detector(self, detector: Arc<PromptInjectionDetector>) -> Self {
+        let router = (*self.router)
+            .clone()
+            .with_prompt_injection_detector(detector);
         Self {
             config: self.config,
             router: Arc::new(router),

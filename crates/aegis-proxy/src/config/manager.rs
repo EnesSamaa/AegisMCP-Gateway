@@ -45,8 +45,7 @@ impl ConfigManager {
             return Ok(GatewayConfig::default());
         }
 
-        let builder = Config::builder()
-            .add_source(File::from(path).format(FileFormat::Yaml));
+        let builder = Config::builder().add_source(File::from(path).format(FileFormat::Yaml));
 
         let settings = builder
             .build()
@@ -79,7 +78,10 @@ impl ConfigManager {
                 if event.kind.is_modify() || event.kind.is_create() {
                     match Self::load_from_path(&config_path) {
                         Ok(new_config) => {
-                            info!("Gateway configuration hot-reloaded successfully from {}", config_path.display());
+                            info!(
+                                "Gateway configuration hot-reloaded successfully from {}",
+                                config_path.display()
+                            );
                             let _ = tx.send(new_config);
                         }
                         Err(err) => {
@@ -91,10 +93,7 @@ impl ConfigManager {
         })
         .map_err(|e| ProxyError::Upstream(format!("Notify watcher error: {e}")))?;
 
-        let target_watch_dir = self
-            .config_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
+        let target_watch_dir = self.config_path.parent().unwrap_or_else(|| Path::new("."));
 
         watcher
             .watch(target_watch_dir, RecursiveMode::NonRecursive)

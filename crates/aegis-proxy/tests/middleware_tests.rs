@@ -48,7 +48,10 @@ async fn run_slow_mock_upstream(listener: TcpListener, delay: Duration) {
 async fn test_middleware_request_id_and_latency_headers() {
     let upstream_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let upstream_addr = upstream_listener.local_addr().unwrap();
-    tokio::spawn(run_slow_mock_upstream(upstream_listener, Duration::from_millis(5)));
+    tokio::spawn(run_slow_mock_upstream(
+        upstream_listener,
+        Duration::from_millis(5),
+    ));
 
     let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let proxy_addr = proxy_listener.local_addr().unwrap();
@@ -90,7 +93,10 @@ async fn test_middleware_timeout_expiry() {
     let upstream_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let upstream_addr = upstream_listener.local_addr().unwrap();
     // Upstream takes 500ms
-    tokio::spawn(run_slow_mock_upstream(upstream_listener, Duration::from_millis(500)));
+    tokio::spawn(run_slow_mock_upstream(
+        upstream_listener,
+        Duration::from_millis(500),
+    ));
 
     let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let proxy_addr = proxy_listener.local_addr().unwrap();

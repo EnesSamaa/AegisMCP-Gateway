@@ -76,11 +76,7 @@ impl GuardrailEngine {
         let compiled = rules
             .into_iter()
             .map(|rule| {
-                let matcher = rule
-                    .pattern
-                    .as_deref()
-                    .map(RegexMatcher::new)
-                    .transpose()?;
+                let matcher = rule.pattern.as_deref().map(RegexMatcher::new).transpose()?;
                 Ok((rule, matcher))
             })
             .collect::<Result<Vec<_>, GuardrailError>>()?;
@@ -128,7 +124,11 @@ mod tests {
     use crate::rule::Rule;
 
     fn make_engine() -> GuardrailEngine {
-        let rules = vec![Rule::block("block-password", "Block password keyword", r"(?i)\bpassword\b")];
+        let rules = vec![Rule::block(
+            "block-password",
+            "Block password keyword",
+            r"(?i)\bpassword\b",
+        )];
         GuardrailEngine::new(rules).expect("valid engine")
     }
 

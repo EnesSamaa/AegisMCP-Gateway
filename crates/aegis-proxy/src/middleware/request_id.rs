@@ -59,8 +59,8 @@ where
             .and_then(|v| v.to_str().ok())
             .map_or_else(|| RequestId::new().to_string(), ToOwned::to_owned);
 
-        let header_val =
-            HeaderValue::from_str(&req_id_str).unwrap_or_else(|_| HeaderValue::from_static("req-fallback"));
+        let header_val = HeaderValue::from_str(&req_id_str)
+            .unwrap_or_else(|_| HeaderValue::from_static("req-fallback"));
 
         req.headers_mut().insert(X_REQUEST_ID, header_val.clone());
 

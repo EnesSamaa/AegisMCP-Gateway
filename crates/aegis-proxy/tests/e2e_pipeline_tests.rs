@@ -6,9 +6,7 @@ use aegis_proxy::{
 };
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
-use hyper::{
-    body::Incoming, service::service_fn, Request, Response, StatusCode,
-};
+use hyper::{body::Incoming, service::service_fn, Request, Response, StatusCode};
 use hyper_util::{
     client::legacy::Client, rt::TokioExecutor, rt::TokioIo,
     server::conn::auto::Builder as ServerBuilder,

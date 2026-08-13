@@ -90,17 +90,20 @@ impl IdentityExtractor {
         // 1. Try Bearer JWT
         if let Some(auth_str) = auth_header {
             if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                let token_data = decode::<AgentJwtClaims>(
-                    token,
-                    &self.jwt_decoding_key,
-                    &Validation::default(),
-                )
-                .map_err(|e| GuardrailError::AuthenticationFailed(format!("JWT validation failed: {e}")))?;
+                let token_data =
+                    decode::<AgentJwtClaims>(token, &self.jwt_decoding_key, &Validation::default())
+                        .map_err(|e| {
+                            GuardrailError::AuthenticationFailed(format!(
+                                "JWT validation failed: {e}"
+                            ))
+                        })?;
 
                 let claims = token_data.claims;
 
                 if claims.exp <= current_epoch_secs {
-                    return Err(GuardrailError::AuthenticationFailed("JWT token has expired".to_string()));
+                    return Err(GuardrailError::AuthenticationFailed(
+                        "JWT token has expired".to_string(),
+                    ));
                 }
 
                 let identity = AgentIdentity::new(&claims.sub, &claims.sub, &claims.role);
@@ -123,11 +126,15 @@ impl IdentityExtractor {
 
             if let Some(ctx) = found_ctx {
                 if ctx.is_expired(current_epoch_secs) {
-                    return Err(GuardrailError::AuthenticationFailed("API Key has expired".to_string()));
+                    return Err(GuardrailError::AuthenticationFailed(
+                        "API Key has expired".to_string(),
+                    ));
                 }
                 return Ok(ctx);
             }
-            return Err(GuardrailError::AuthenticationFailed("Invalid X-API-Key".to_string()));
+            return Err(GuardrailError::AuthenticationFailed(
+                "Invalid X-API-Key".to_string(),
+            ));
         }
 
         Err(GuardrailError::AuthenticationFailed(
