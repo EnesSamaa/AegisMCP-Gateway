@@ -14,6 +14,7 @@
 pub mod dlp;
 pub mod engine;
 pub mod error;
+pub mod hitl;
 pub mod identity;
 pub mod injection;
 pub mod loop_breaker;
@@ -26,6 +27,7 @@ pub mod tool_authz;
 pub use dlp::{DlpMaskingEngine, DlpScanReport};
 pub use engine::GuardrailEngine;
 pub use error::GuardrailError;
+pub use hitl::{ApprovalDecision, ApprovalRequestId, HitlApprovalEngine};
 pub use identity::{AgentJwtClaims, IdentityContext, IdentityExtractor};
 pub use injection::{InjectionScanResult, InjectionSeverity, PromptInjectionDetector};
 pub use loop_breaker::{LoopBreakerConfig, LoopBreakerEngine};

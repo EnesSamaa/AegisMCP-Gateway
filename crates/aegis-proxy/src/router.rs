@@ -9,9 +9,9 @@ use aegis_core::{
     AgentIdentity, JsonRpcRequest, McpSessionContext, RequestId, SessionId, ToolCall,
 };
 use aegis_guardrails::{
-    AgentRateLimiter, DlpMaskingEngine, IdentityContext, IdentityExtractor, InjectionSeverity,
-    LoopBreakerEngine, PolicyDecision as AuthzDecision, PromptInjectionDetector, TokenTranslator,
-    ToolAuthorizationEngine,
+    AgentRateLimiter, ApprovalDecision, DlpMaskingEngine, HitlApprovalEngine, IdentityContext,
+    IdentityExtractor, InjectionSeverity, LoopBreakerEngine, PolicyDecision as AuthzDecision,
+    PromptInjectionDetector, TokenTranslator, ToolAuthorizationEngine,
 };
 use aegis_wasm::{build_inspection_context, HostDecision, PluginRunner};
 use bytes::Bytes;
@@ -44,6 +44,7 @@ pub struct ProxyRouter {
     dlp_engine: Option<Arc<DlpMaskingEngine>>,
     rate_limiter: Option<Arc<AgentRateLimiter>>,
     loop_breaker: Option<Arc<LoopBreakerEngine>>,
+    hitl_engine: Option<Arc<HitlApprovalEngine>>,
 }
 
 impl ProxyRouter {
@@ -70,6 +71,7 @@ impl ProxyRouter {
             dlp_engine: None,
             rate_limiter: None,
             loop_breaker: None,
+            hitl_engine: None,
         }
     }
 
@@ -92,6 +94,7 @@ impl ProxyRouter {
             dlp_engine: None,
             rate_limiter: None,
             loop_breaker: None,
+            hitl_engine: None,
         }
     }
 
@@ -151,6 +154,13 @@ impl ProxyRouter {
     #[must_use]
     pub fn with_loop_breaker(mut self, breaker: Arc<LoopBreakerEngine>) -> Self {
         self.loop_breaker = Some(breaker);
+        self
+    }
+
+    /// Attaches a HITL Approval Engine for high-risk tool call suspension.
+    #[must_use]
+    pub fn with_hitl_engine(mut self, engine: Arc<HitlApprovalEngine>) -> Self {
+        self.hitl_engine = Some(engine);
         self
     }
 
@@ -366,7 +376,31 @@ impl ProxyRouter {
 
                 let tool_call = ToolCall::new(&rpc_req.method, rpc_req.params.clone());
 
-                // 2. Stateful Loop Breaker Check
+                // 2. HITL Approval Check for High-Risk Tools
+                if let Some(hitl) = &self.hitl_engine {
+                    if hitl.is_high_risk(&rpc_req.method).await {
+                        if let Ok((req_id, ApprovalDecision::Rejected(reason))) =
+                            hitl.request_approval(&tool_call, None).await
+                        {
+                            warn!(request_id = %req_id, reason = %reason, "HITL Approval Rejected");
+                            let json_id = serde_json::to_string(&rpc_req.id)
+                                .unwrap_or_else(|_| "null".to_string());
+                            let err_json = format!(
+                                r#"{{"jsonrpc":"2.0","error":{{"code":-32005,"message":"HITL Approval Required: {reason}"}},"id":{json_id}}}"#
+                            );
+                            let err_body = Full::new(Bytes::from(err_json))
+                                .map_err(|_| -> hyper::Error { unreachable!() })
+                                .boxed();
+
+                            return Ok(Response::builder()
+                                .status(StatusCode::OK)
+                                .header(hyper::header::CONTENT_TYPE, "application/json")
+                                .body(err_body)?);
+                        }
+                    }
+                }
+
+                // 3. Stateful Loop Breaker Check
                 if let Some(breaker) = &self.loop_breaker {
                     let session_key = extracted_identity.as_ref().map_or_else(
                         || "default-session".to_string(),
@@ -394,7 +428,7 @@ impl ProxyRouter {
                     }
                 }
 
-                // 3. RBAC/ABAC Tool Authorization Check
+                // 4. RBAC/ABAC Tool Authorization Check
                 if let Some(authz_engine) = &self.tool_authz_engine {
                     let dummy_ctx;
                     let identity_ref = if let Some(ctx) = &extracted_identity {
@@ -431,7 +465,7 @@ impl ProxyRouter {
                     }
                 }
 
-                // 4. WASM Policy Guardrails Check
+                // 5. WASM Policy Guardrails Check
                 if let Some(deny_resp) = self
                     .evaluate_wasm_guardrail(&rpc_req, extracted_identity.as_ref())
                     .await

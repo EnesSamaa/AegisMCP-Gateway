@@ -8,7 +8,7 @@ use crate::{
     router::ProxyRouter,
 };
 use aegis_guardrails::{
-    AgentRateLimiter, DlpMaskingEngine, IdentityExtractor, LoopBreakerEngine,
+    AgentRateLimiter, DlpMaskingEngine, HitlApprovalEngine, IdentityExtractor, LoopBreakerEngine,
     PromptInjectionDetector, TokenTranslator, ToolAuthorizationEngine,
 };
 use aegis_wasm::PluginRunner;
@@ -141,6 +141,17 @@ impl McpProxy {
     #[must_use]
     pub fn with_loop_breaker(self, breaker: Arc<LoopBreakerEngine>) -> Self {
         let router = (*self.router).clone().with_loop_breaker(breaker);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
+        }
+    }
+
+    /// Attaches a HITL Approval Engine for high-risk tool call suspension.
+    #[must_use]
+    pub fn with_hitl_engine(self, engine: Arc<HitlApprovalEngine>) -> Self {
+        let router = (*self.router).clone().with_hitl_engine(engine);
         Self {
             config: self.config,
             router: Arc::new(router),
