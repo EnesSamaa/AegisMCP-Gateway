@@ -47,6 +47,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"]
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 semver        = { version = "1.0" }
 jsonwebtoken  = { version = "9.3" }
+sha2          = { version = "0.10" }
 
 # Error handling
 thiserror = { version = "2.0" }

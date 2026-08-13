@@ -20,9 +20,10 @@ tracing    = { workspace = true }
 thiserror  = { workspace = true }
 anyhow     = { workspace = true }
 bytes      = { workspace = true }
+tokio      = { workspace = true }
 
 # Cryptographic primitives
-sha2   = "0.10"
+sha2   = { workspace = true }
 hex    = "0.4"
 
 [dev-dependencies]

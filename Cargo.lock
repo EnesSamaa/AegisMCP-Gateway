@@ -19,6 +19,7 @@ dependencies = [
  "bytes",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -64,6 +65,7 @@ version = "0.1.0"
 dependencies = [
  "aegis-core",
  "aegis-guardrails",
+ "aegis-proof",
  "aegis-wasm",
  "anyhow",
  "bytes",

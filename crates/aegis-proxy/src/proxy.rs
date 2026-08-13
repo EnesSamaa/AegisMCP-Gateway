@@ -11,6 +11,7 @@ use aegis_guardrails::{
     AgentRateLimiter, DlpMaskingEngine, HitlApprovalEngine, IdentityExtractor, LoopBreakerEngine,
     PromptInjectionDetector, TokenTranslator, ToolAuthorizationEngine,
 };
+use aegis_proof::AuditLedger;
 use aegis_wasm::PluginRunner;
 use hyper_util::{
     rt::TokioIo, server::conn::auto::Builder as ServerConnBuilder, service::TowerToHyperService,
@@ -152,6 +153,17 @@ impl McpProxy {
     #[must_use]
     pub fn with_hitl_engine(self, engine: Arc<HitlApprovalEngine>) -> Self {
         let router = (*self.router).clone().with_hitl_engine(engine);
+        Self {
+            config: self.config,
+            router: Arc::new(router),
+            timeout_duration: self.timeout_duration,
+        }
+    }
+
+    /// Attaches an Audit Ledger for cryptographic SHA-256 audit entry recording.
+    #[must_use]
+    pub fn with_audit_ledger(self, ledger: Arc<AuditLedger>) -> Self {
+        let router = (*self.router).clone().with_audit_ledger(ledger);
         Self {
             config: self.config,
             router: Arc::new(router),

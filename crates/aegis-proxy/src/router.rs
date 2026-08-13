@@ -13,6 +13,7 @@ use aegis_guardrails::{
     IdentityExtractor, InjectionSeverity, LoopBreakerEngine, PolicyDecision as AuthzDecision,
     PromptInjectionDetector, TokenTranslator, ToolAuthorizationEngine,
 };
+use aegis_proof::AuditLedger;
 use aegis_wasm::{build_inspection_context, HostDecision, PluginRunner};
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
@@ -26,7 +27,7 @@ use hyper_util::{
     rt::TokioExecutor,
 };
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
@@ -45,6 +46,7 @@ pub struct ProxyRouter {
     rate_limiter: Option<Arc<AgentRateLimiter>>,
     loop_breaker: Option<Arc<LoopBreakerEngine>>,
     hitl_engine: Option<Arc<HitlApprovalEngine>>,
+    audit_ledger: Option<Arc<AuditLedger>>,
 }
 
 impl ProxyRouter {
@@ -72,6 +74,7 @@ impl ProxyRouter {
             rate_limiter: None,
             loop_breaker: None,
             hitl_engine: None,
+            audit_ledger: None,
         }
     }
 
@@ -95,6 +98,7 @@ impl ProxyRouter {
             rate_limiter: None,
             loop_breaker: None,
             hitl_engine: None,
+            audit_ledger: None,
         }
     }
 
@@ -164,6 +168,42 @@ impl ProxyRouter {
         self
     }
 
+    /// Attaches an Audit Ledger for cryptographic SHA-256 audit entry recording.
+    #[must_use]
+    pub fn with_audit_ledger(mut self, ledger: Arc<AuditLedger>) -> Self {
+        self.audit_ledger = Some(ledger);
+        self
+    }
+
+    /// Helper to record audit log entry if ledger is attached.
+    fn log_audit(
+        &self,
+        start_time: Instant,
+        extracted_identity: Option<&IdentityContext>,
+        tool_name: &str,
+        decision_summary: &str,
+    ) {
+        if let Some(ledger) = &self.audit_ledger {
+            let now_ns = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX));
+            let ag_id = extracted_identity.as_ref().map_or_else(
+                || "anonymous".to_string(),
+                |ctx| ctx.identity.agent_id().to_string(),
+            );
+            let elapsed_us = u64::try_from(start_time.elapsed().as_micros()).unwrap_or(u64::MAX);
+
+            ledger.log_entry(
+                "req-audit-log",
+                now_ns,
+                ag_id,
+                tool_name,
+                decision_summary,
+                elapsed_us,
+            );
+        }
+    }
+
     /// Evaluates WASM policy guardrails for an incoming JSON-RPC request.
     async fn evaluate_wasm_guardrail(
         &self,
@@ -224,6 +264,8 @@ impl ProxyRouter {
         &self,
         req: Request<Incoming>,
     ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, ProxyError> {
+        let start_time = Instant::now();
+
         // Route /health
         if req.uri().path() == "/health" {
             let body = Full::new(Bytes::from(
@@ -291,6 +333,13 @@ impl ProxyRouter {
                     .map_err(|_| -> hyper::Error { unreachable!() })
                     .boxed();
 
+                    self.log_audit(
+                        start_time,
+                        extracted_identity.as_ref(),
+                        "auth",
+                        "DENY_AUTH_FAILED",
+                    );
+
                     return Ok(Response::builder()
                         .status(StatusCode::UNAUTHORIZED)
                         .header(hyper::header::CONTENT_TYPE, "application/json")
@@ -312,6 +361,13 @@ impl ProxyRouter {
                 let err_body = Full::new(Bytes::from(err_json))
                     .map_err(|_| -> hyper::Error { unreachable!() })
                     .boxed();
+
+                self.log_audit(
+                    start_time,
+                    extracted_identity.as_ref(),
+                    "rate_limit",
+                    "DENY_RATE_LIMIT",
+                );
 
                 return Ok(Response::builder()
                     .status(StatusCode::OK)
@@ -343,6 +399,8 @@ impl ProxyRouter {
         // Collect body for inspection
         let body_bytes = incoming_body.collect().await?.to_bytes();
 
+        let mut req_method_name = parts.uri.path().to_string();
+
         // Inspect prompt injection & JSON-RPC payload
         if !body_bytes.is_empty() {
             let body_str = String::from_utf8_lossy(&body_bytes);
@@ -360,6 +418,13 @@ impl ProxyRouter {
                         .map_err(|_| -> hyper::Error { unreachable!() })
                         .boxed();
 
+                    self.log_audit(
+                        start_time,
+                        extracted_identity.as_ref(),
+                        "prompt_scan",
+                        "DENY_PROMPT_INJECTION",
+                    );
+
                     return Ok(Response::builder()
                         .status(StatusCode::OK)
                         .header(hyper::header::CONTENT_TYPE, "application/json")
@@ -368,6 +433,7 @@ impl ProxyRouter {
             }
 
             if let Ok(rpc_req) = serde_json::from_slice::<JsonRpcRequest>(&body_bytes) {
+                req_method_name.clone_from(&rpc_req.method);
                 info!(
                     method = %rpc_req.method,
                     id = ?rpc_req.id,
@@ -391,6 +457,13 @@ impl ProxyRouter {
                             let err_body = Full::new(Bytes::from(err_json))
                                 .map_err(|_| -> hyper::Error { unreachable!() })
                                 .boxed();
+
+                            self.log_audit(
+                                start_time,
+                                extracted_identity.as_ref(),
+                                &rpc_req.method,
+                                "DENY_HITL_REJECTED",
+                            );
 
                             return Ok(Response::builder()
                                 .status(StatusCode::OK)
@@ -420,6 +493,13 @@ impl ProxyRouter {
                         let err_body = Full::new(Bytes::from(err_json))
                             .map_err(|_| -> hyper::Error { unreachable!() })
                             .boxed();
+
+                        self.log_audit(
+                            start_time,
+                            extracted_identity.as_ref(),
+                            &rpc_req.method,
+                            "DENY_LOOP_BREAKER",
+                        );
 
                         return Ok(Response::builder()
                             .status(StatusCode::OK)
@@ -458,6 +538,13 @@ impl ProxyRouter {
                             .map_err(|_| -> hyper::Error { unreachable!() })
                             .boxed();
 
+                        self.log_audit(
+                            start_time,
+                            extracted_identity.as_ref(),
+                            &rpc_req.method,
+                            "DENY_UNAUTHORIZED_TOOL",
+                        );
+
                         return Ok(Response::builder()
                             .status(StatusCode::OK)
                             .header(hyper::header::CONTENT_TYPE, "application/json")
@@ -470,6 +557,12 @@ impl ProxyRouter {
                     .evaluate_wasm_guardrail(&rpc_req, extracted_identity.as_ref())
                     .await
                 {
+                    self.log_audit(
+                        start_time,
+                        extracted_identity.as_ref(),
+                        &rpc_req.method,
+                        "DENY_WASM_POLICY",
+                    );
                     return Ok(deny_resp);
                 }
             } else {
@@ -530,6 +623,13 @@ impl ProxyRouter {
                 .map_err(|_| -> hyper::Error { unreachable!() })
                 .boxed();
 
+                self.log_audit(
+                    start_time,
+                    extracted_identity.as_ref(),
+                    &req_method_name,
+                    "DENY_UPSTREAM_UNREACHABLE",
+                );
+
                 return Ok(Response::builder()
                     .status(StatusCode::BAD_GATEWAY)
                     .header(hyper::header::CONTENT_TYPE, "application/json")
@@ -570,6 +670,14 @@ impl ProxyRouter {
         } else {
             resp_body.map_err(hyper::Error::from).boxed()
         };
+
+        // Log successful audit entry
+        self.log_audit(
+            start_time,
+            extracted_identity.as_ref(),
+            &req_method_name,
+            "ALLOW",
+        );
 
         Ok(client_resp.body(boxed_resp_body)?)
     }

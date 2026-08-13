@@ -5,15 +5,6 @@
 //! This crate provides the audit-trail layer: every proxied request/response
 //! pair is hashed and inserted into an append-only Merkle tree whose root can
 //! be attested at any time.
-//!
-//! ## Module organisation
-//!
-//! ```text
-//! aegis-proof
-//! ├── error  — proof-specific error types
-//! ├── hash   — SHA-256 hashing utilities
-//! └── merkle — Merkle tree and inclusion proof types
-//! ```
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
@@ -22,8 +13,10 @@
 
 pub mod error;
 pub mod hash;
+pub mod ledger;
 pub mod merkle;
 
 pub use error::ProofError;
 pub use hash::Sha256Digest;
+pub use ledger::AuditLedger;
 pub use merkle::{MerkleProof, MerkleTree};

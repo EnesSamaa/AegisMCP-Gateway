@@ -11,12 +11,14 @@
 #![warn(clippy::pedantic, clippy::nursery)]
 #![warn(missing_docs)]
 
+pub mod audit;
 pub mod error;
 pub mod jsonrpc;
 pub mod mcp;
 pub mod types;
 
 // Re-exports for top-level ergonomics
+pub use audit::AuditEntry;
 pub use error::{AegisCoreError, AegisError, McpError, Result};
 pub use jsonrpc::{
     JsonRpcError, JsonRpcId, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse,
