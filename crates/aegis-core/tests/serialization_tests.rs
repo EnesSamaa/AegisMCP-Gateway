@@ -2,8 +2,8 @@
 
 use aegis_core::{
     AgentIdentity, InitializeParams, InitializeResult, JsonRpcId, JsonRpcNotification,
-    JsonRpcRequest, JsonRpcResponse, McpSessionContext, SessionId, ToolCall,
-    ToolContent, ToolDefinition, ToolInputSchema, ToolResult,
+    JsonRpcRequest, JsonRpcResponse, McpSessionContext, SessionId, ToolCall, ToolContent,
+    ToolDefinition, ToolInputSchema, ToolResult,
 };
 use serde_json::json;
 
@@ -135,8 +135,7 @@ fn test_agent_identity_and_session_context() {
 
     let session = McpSessionContext::new(SessionId::new(), identity, 1_700_000_000_000);
     let serialized = serde_json::to_string(&session).expect("serialize session");
-    let parsed: McpSessionContext =
-        serde_json::from_str(&serialized).expect("deserialize session");
+    let parsed: McpSessionContext = serde_json::from_str(&serialized).expect("deserialize session");
 
     assert_eq!(parsed.identity.client_id, "client-007");
     assert_eq!(parsed.identity.tenant_id, Some("tenant-42".into()));

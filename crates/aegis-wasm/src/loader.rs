@@ -55,8 +55,9 @@ impl ComponentLoader {
 
         info!(plugin_id = %plugin_id, bytes_len = bytes.len(), "Compiling WASI 0.2 component module");
 
-        let component = Component::new(self.engine.inner(), bytes)
-            .map_err(|e| WasmError::Compilation(format!("Failed to compile component '{plugin_id}': {e}")))?;
+        let component = Component::new(self.engine.inner(), bytes).map_err(|e| {
+            WasmError::Compilation(format!("Failed to compile component '{plugin_id}': {e}"))
+        })?;
 
         if let Ok(mut write_guard) = self.cache.write() {
             write_guard.insert(plugin_id, component.clone());
@@ -76,8 +77,12 @@ impl ComponentLoader {
         path: impl AsRef<Path>,
     ) -> Result<Component, WasmError> {
         let path_ref = path.as_ref();
-        let bytes = std::fs::read(path_ref)
-            .map_err(|e| WasmError::Compilation(format!("Failed to read Wasm file {}: {e}", path_ref.display())))?;
+        let bytes = std::fs::read(path_ref).map_err(|e| {
+            WasmError::Compilation(format!(
+                "Failed to read Wasm file {}: {e}",
+                path_ref.display()
+            ))
+        })?;
         self.load_bytes(plugin_id, &bytes)
     }
 

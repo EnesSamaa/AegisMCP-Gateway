@@ -17,6 +17,8 @@ fn test_pool_config_custom_initialization() {
 fn test_store_context_reusability_and_reset() {
     let mut ctx = AegisStoreCtx::new(16 * 1024 * 1024);
     let limits_ref = ctx.limits_mut();
-    let _new_limits = StoreLimitsBuilder::new().memory_size(16 * 1024 * 1024).build();
+    let _new_limits = StoreLimitsBuilder::new()
+        .memory_size(16 * 1024 * 1024)
+        .build();
     let _ = limits_ref;
 }

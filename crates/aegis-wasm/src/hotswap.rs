@@ -60,7 +60,12 @@ impl PluginHotSwapper {
 
         // 3. Compile Component
         let component = wasmtime::component::Component::new(self.engine.inner(), wasm_bytes)
-            .map_err(|e| WasmError::Compilation(format!("Compilation failed for plugin '{}': {e}", metadata.plugin_id)))?;
+            .map_err(|e| {
+                WasmError::Compilation(format!(
+                    "Compilation failed for plugin '{}': {e}",
+                    metadata.plugin_id
+                ))
+            })?;
 
         // 4. Build WasmInstancePool
         let new_pool = WasmInstancePool::new(

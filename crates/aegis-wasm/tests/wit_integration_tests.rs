@@ -17,7 +17,10 @@ fn test_wit_context_building_and_parsing() {
     let identity = AgentIdentity::new("agent-100", "SecBot", "analyst");
     let session = McpSessionContext::new(SessionId::new(), identity, 1_700_000_000_000);
     let req_id = RequestId::new();
-    let tool_call = ToolCall::new("file_read", Some(serde_json::json!({"path": "/etc/passwd"})));
+    let tool_call = ToolCall::new(
+        "file_read",
+        Some(serde_json::json!({"path": "/etc/passwd"})),
+    );
 
     let wit_ctx = build_inspection_context(&session, req_id, &tool_call);
     assert_eq!(wit_ctx.tool_name, "file_read");

@@ -24,8 +24,7 @@ impl WasmEngine {
         config.wasm_simd(true);
         config.cranelift_opt_level(OptLevel::Speed);
 
-        let engine = Engine::new(&config)
-            .map_err(|e| WasmError::EngineInit(e.to_string()))?;
+        let engine = Engine::new(&config).map_err(|e| WasmError::EngineInit(e.to_string()))?;
 
         Ok(Self { engine })
     }

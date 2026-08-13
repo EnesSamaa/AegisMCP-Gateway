@@ -18,9 +18,9 @@ pub fn verify_plugin_signature(
 
     let signature = Signature::from_bytes(signature_bytes);
 
-    verifying_key
-        .verify(wasm_bytes, &signature)
-        .map_err(|e| WasmError::SignatureVerification(format!("Ed25519 signature verification failed: {e}")))
+    verifying_key.verify(wasm_bytes, &signature).map_err(|e| {
+        WasmError::SignatureVerification(format!("Ed25519 signature verification failed: {e}"))
+    })
 }
 
 #[cfg(test)]
@@ -54,11 +54,8 @@ mod tests {
         let mut bad_signature_bytes = signing_key.sign(wasm_payload).to_bytes();
         bad_signature_bytes[0] ^= 0xFF; // Corrupt signature byte
 
-        let res = verify_plugin_signature(
-            wasm_payload,
-            &bad_signature_bytes,
-            verifying_key.as_bytes(),
-        );
+        let res =
+            verify_plugin_signature(wasm_payload, &bad_signature_bytes, verifying_key.as_bytes());
 
         assert!(res.is_err());
     }

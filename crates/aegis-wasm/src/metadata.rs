@@ -43,8 +43,9 @@ impl PluginMetadata {
     ///
     /// Returns [`WasmError::InvalidMetadata`] if version string is not valid semver.
     pub fn parsed_version(&self) -> Result<Version, WasmError> {
-        Version::parse(&self.version)
-            .map_err(|e| WasmError::InvalidMetadata(format!("Invalid semver '{}': {e}", self.version)))
+        Version::parse(&self.version).map_err(|e| {
+            WasmError::InvalidMetadata(format!("Invalid semver '{}': {e}", self.version))
+        })
     }
 }
 

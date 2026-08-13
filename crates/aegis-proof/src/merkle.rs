@@ -162,7 +162,11 @@ fn generate_siblings(leaves: &[Sha256Digest], index: usize) -> Vec<Sha256Digest>
 
     while layer.len() > 1 {
         let sibling_idx = if idx.is_multiple_of(2) {
-            if idx + 1 < layer.len() { idx + 1 } else { idx }
+            if idx + 1 < layer.len() {
+                idx + 1
+            } else {
+                idx
+            }
         } else {
             idx - 1
         };
