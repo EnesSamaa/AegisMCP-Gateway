@@ -35,6 +35,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
+/// Maximum allowed request payload size (4MB).
+pub const DEFAULT_MAX_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
+
 /// High-performance router and forwarding pipeline for MCP requests.
 #[derive(Clone)]
 pub struct ProxyRouter {
@@ -501,6 +504,64 @@ impl ProxyRouter {
         // Collect body for inspection
         let body_bytes = incoming_body.collect().await?.to_bytes();
 
+        // Enforce maximum payload size boundary (4MB default)
+        if body_bytes.len() > DEFAULT_MAX_PAYLOAD_BYTES {
+            warn!(
+                size = body_bytes.len(),
+                limit = DEFAULT_MAX_PAYLOAD_BYTES,
+                "Request payload exceeds maximum allowed size"
+            );
+            let err_json = r#"{"jsonrpc":"2.0","error":{"code":-32000,"message":"Payload Too Large: Maximum allowed request body is 4MB"},"id":null}"#;
+            let err_body = Full::new(Bytes::from(err_json))
+                .map_err(|_| -> hyper::Error { unreachable!() })
+                .boxed();
+
+            self.log_audit(
+                start_time,
+                extracted_identity.as_ref(),
+                parts.uri.path(),
+                "DENY_PAYLOAD_TOO_LARGE",
+            );
+            record_security_violation("payload_too_large");
+
+            return Ok(Response::builder()
+                .status(StatusCode::PAYLOAD_TOO_LARGE)
+                .header(hyper::header::CONTENT_TYPE, "application/json")
+                .body(err_body)?);
+        }
+
+        // Validate JSON payload for MCP endpoints
+        let is_json_req = parts
+            .headers
+            .get(hyper::header::CONTENT_TYPE)
+            .and_then(|ct| ct.to_str().ok())
+            .is_some_and(|s| s.contains("application/json"))
+            || parts.uri.path().ends_with("/mcp");
+
+        if is_json_req
+            && !body_bytes.is_empty()
+            && serde_json::from_slice::<serde_json::Value>(&body_bytes).is_err()
+        {
+            warn!("Malformed or truncated JSON payload intercepted");
+            let err_json = r#"{"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error: Invalid or truncated JSON payload"},"id":null}"#;
+            let err_body = Full::new(Bytes::from(err_json))
+                .map_err(|_| -> hyper::Error { unreachable!() })
+                .boxed();
+
+            self.log_audit(
+                start_time,
+                extracted_identity.as_ref(),
+                parts.uri.path(),
+                "DENY_PARSE_ERROR",
+            );
+            record_security_violation("malformed_json");
+
+            return Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header(hyper::header::CONTENT_TYPE, "application/json")
+                .body(err_body)?);
+        }
+
         let mut req_method_name = parts.uri.path().to_string();
 
         // Inspect prompt injection & JSON-RPC payload
@@ -760,19 +821,30 @@ impl ProxyRouter {
         let boxed_resp_body = if is_sse {
             resp_body.map_err(hyper::Error::from).boxed()
         } else if let Some(dlp) = &self.dlp_engine {
-            let resp_bytes = resp_body.collect().await?.to_bytes();
-            let resp_str = String::from_utf8_lossy(&resp_bytes);
-            let (masked_str, report) = dlp.mask_payload(&resp_str);
-            if report.items_masked_count > 0 {
-                info!(
-                    items_masked = report.items_masked_count,
-                    categories = ?report.masked_categories,
-                    "DLP Masking Applied to Outbound Response"
-                );
+            match resp_body.collect().await {
+                Ok(collected) => {
+                    let resp_bytes = collected.to_bytes();
+                    let resp_str = String::from_utf8_lossy(&resp_bytes);
+                    let (masked_str, report) = dlp.mask_payload(&resp_str);
+                    if report.items_masked_count > 0 {
+                        info!(
+                            items_masked = report.items_masked_count,
+                            categories = ?report.masked_categories,
+                            "DLP Masking Applied to Outbound Response"
+                        );
+                    }
+                    Full::new(Bytes::from(masked_str))
+                        .map_err(|_| -> hyper::Error { unreachable!() })
+                        .boxed()
+                }
+                Err(err) => {
+                    warn!(error = %err, "Failed to collect response body from upstream");
+                    let err_json = r#"{"jsonrpc":"2.0","error":{"code":-32010,"message":"Upstream server truncated response"},"id":null}"#;
+                    Full::new(Bytes::from(err_json))
+                        .map_err(|_| -> hyper::Error { unreachable!() })
+                        .boxed()
+                }
             }
-            Full::new(Bytes::from(masked_str))
-                .map_err(|_| -> hyper::Error { unreachable!() })
-                .boxed()
         } else {
             resp_body.map_err(hyper::Error::from).boxed()
         };
