@@ -14,13 +14,24 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 # ------------------------------------------------------------------------------
 # Stage 2: Cargo Chef Builder
-# Cooks dependencies and builds release binaries with LTO & symbol stripping.
 # ------------------------------------------------------------------------------
 FROM lukemathwalker/cargo-chef:latest-rust-1-bookworm AS builder
 WORKDIR /app
 
-# Cook and cache dependency layers
+# Install native compilation dependencies for C/C++ bindings (aws-lc-sys, cmake)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake \
+    clang \
+    pkg-config \
+    libssl-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy recipe and WIT contracts (needed at compile time by wasmtime::component::bindgen!)
 COPY --from=planner /app/recipe.json recipe.json
+COPY wit ./wit
+
+# Cook and cache dependency layers
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Copy application source tree

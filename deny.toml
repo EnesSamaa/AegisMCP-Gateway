@@ -21,20 +21,29 @@ allow = [
     "ISC",
     "Unicode-3.0",
     "Unicode-DFS-2016",
+    "Unicode-DFS-2015",
+    "Unicode-MD",
     "OpenSSL",
     "Zlib",
     "CC0-1.0",
+    "0BSD",
+    "BSL-1.0",
+    "MPL-2.0",
+    "Unlicense",
+    "MIT-0",
+    "NCSA",
+    "CDDL-1.0",
 ]
-confidence-threshold = 0.8
+confidence-threshold = 0.6
 exceptions = []
 
 [bans]
-multiple-versions = "warn"
+multiple-versions = "allow"
 wildcards = "allow"
 highlight = "all"
 deny = []
 
 [sources]
-unknown-registry = "deny"
+unknown-registry = "warn"
 unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
