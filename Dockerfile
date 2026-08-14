@@ -38,7 +38,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 
 # Build production binaries
-RUN cargo build --release --bin aegis-gateway --bin aegis-cli --exclude plugin-pii-filter
+RUN cargo build --release -p aegis-proxy --bin aegis-gateway -p aegis-cli --bin aegis-cli
 
 # ------------------------------------------------------------------------------
 # Stage 3: Ultra-Minimal Distroless Runtime

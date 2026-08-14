@@ -5,7 +5,7 @@
 
 [advisories]
 vulnerability = "deny"
-unmaintained = "warn"
+unmaintained = "none"
 yanked = "warn"
 notice = "warn"
 ignore = []
@@ -22,7 +22,6 @@ allow = [
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "Unicode-DFS-2015",
-    "Unicode-MD",
     "OpenSSL",
     "Zlib",
     "CC0-1.0",

@@ -115,9 +115,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p aegis-proxy --bin aegis-gateway -p aegis-cli --bin aegis-cli --exclude plugin-pii-filter
+            cross build --release --target ${{ matrix.target }} -p aegis-proxy --bin aegis-gateway -p aegis-cli --bin aegis-cli
           else
-            cargo build --release --target ${{ matrix.target }} -p aegis-proxy --bin aegis-gateway -p aegis-cli --bin aegis-cli --exclude plugin-pii-filter
+            cargo build --release --target ${{ matrix.target }} -p aegis-proxy --bin aegis-gateway -p aegis-cli --bin aegis-cli
           fi
 
       - name: Package Binary Archive (Unix)
