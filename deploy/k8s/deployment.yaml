@@ -33,7 +33,7 @@ spec:
         fsGroup: 65532
       containers:
         - name: aegis-gateway
-          image: ghcr.io/enessamaa/aegismcp-gateway:v0.4.0
+          image: ghcr.io/enessamaa/aegismcp-gateway:v1.0.0
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

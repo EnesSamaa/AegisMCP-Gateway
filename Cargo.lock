@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aegis-proof",
  "anyhow",
@@ -24,7 +24,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-guardrails"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aegis-core",
  "anyhow",
@@ -56,7 +56,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-proof"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aegis-core",
  "anyhow",
@@ -72,7 +72,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-proxy"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aegis-core",
  "aegis-guardrails",
@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "aegis-wasm"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aegis-core",
  "anyhow",
@@ -1877,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-pii-filter"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "regex",
  "wit-bindgen",

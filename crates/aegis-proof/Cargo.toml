@@ -1,6 +1,6 @@
 [package]
 name        = "aegis-proof"
-version     = "0.1.0"
+version     = "1.0.0"
 edition     = "2021"
 description = "Cryptographic hashing and Merkle-tree proof infrastructure for AegisMCP-Gateway audit trails"
 license     = "MIT OR Apache-2.0"
