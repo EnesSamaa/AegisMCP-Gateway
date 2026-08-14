@@ -1,0 +1,24 @@
+[package]
+name        = "aegis-cli"
+version     = "0.1.0"
+edition     = "2021"
+description = "Command-line audit verification tool for AegisMCP-Gateway Merkle proof inspection"
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/EnesSamaa/AegisMCP-Gateway"
+keywords    = ["cli", "audit", "merkle", "verification", "mcp"]
+categories  = ["command-line-utilities"]
+
+[[bin]]
+name = "aegis-cli"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+aegis-proof = { path = "../aegis-proof" }
+
+clap       = { workspace = true }
+serde_json = { workspace = true }
+tokio      = { workspace = true }
+anyhow     = { workspace = true }

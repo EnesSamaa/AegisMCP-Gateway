@@ -281,6 +281,75 @@ impl ProxyRouter {
             return Ok(resp);
         }
 
+        // Route GET /v1/proofs/root  — return current Merkle root + leaf count
+        if req.uri().path() == "/v1/proofs/root" {
+            if let Some(ledger) = &self.audit_ledger {
+                let root_opt = ledger.get_merkle_root().await;
+                let count = ledger.len().await;
+                let json = match root_opt {
+                    Some(root) => format!(r#"{{"merkle_root":"{root}","leaf_count":{count}}}"#),
+                    None => r#"{"merkle_root":null,"leaf_count":0}"#.to_string(),
+                };
+                let body = Full::new(Bytes::from(json))
+                    .map_err(|_| -> hyper::Error { unreachable!() })
+                    .boxed();
+                return Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .header(hyper::header::CONTENT_TYPE, "application/json")
+                    .body(body)?);
+            }
+            // Ledger not attached
+            let body = Full::new(Bytes::from(r#"{"error":"audit ledger not configured"}"#))
+                .map_err(|_| -> hyper::Error { unreachable!() })
+                .boxed();
+            return Ok(Response::builder()
+                .status(StatusCode::SERVICE_UNAVAILABLE)
+                .header(hyper::header::CONTENT_TYPE, "application/json")
+                .body(body)?);
+        }
+
+        // Route GET /v1/proofs/{request_id}  — return serialised AuditMerkleProof
+        if let Some(request_id) = req
+            .uri()
+            .path()
+            .strip_prefix("/v1/proofs/")
+            .filter(|s| !s.is_empty())
+        {
+            if let Some(ledger) = &self.audit_ledger {
+                match ledger.generate_proof_by_request_id(request_id).await {
+                    Ok(proof) => {
+                        let json = serde_json::to_string(&proof).unwrap_or_else(|e| {
+                            format!(r#"{{"error":"serialization failed: {e}"}}"#)
+                        });
+                        let body = Full::new(Bytes::from(json))
+                            .map_err(|_| -> hyper::Error { unreachable!() })
+                            .boxed();
+                        return Ok(Response::builder()
+                            .status(StatusCode::OK)
+                            .header(hyper::header::CONTENT_TYPE, "application/json")
+                            .body(body)?);
+                    }
+                    Err(err) => {
+                        let json = format!(r#"{{"error":"proof not found: {err}"}}"#);
+                        let body = Full::new(Bytes::from(json))
+                            .map_err(|_| -> hyper::Error { unreachable!() })
+                            .boxed();
+                        return Ok(Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .header(hyper::header::CONTENT_TYPE, "application/json")
+                            .body(body)?);
+                    }
+                }
+            }
+            let body = Full::new(Bytes::from(r#"{"error":"audit ledger not configured"}"#))
+                .map_err(|_| -> hyper::Error { unreachable!() })
+                .boxed();
+            return Ok(Response::builder()
+                .status(StatusCode::SERVICE_UNAVAILABLE)
+                .header(hyper::header::CONTENT_TYPE, "application/json")
+                .body(body)?);
+        }
+
         // Check SSE
         let is_sse = is_sse_request(&req);
 
