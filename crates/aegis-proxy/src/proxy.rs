@@ -34,6 +34,7 @@ impl McpProxy {
     /// Creates a new `McpProxy` from [`ProxyConfig`].
     #[must_use]
     pub fn new(config: ProxyConfig) -> Self {
+        crate::telemetry::init_metrics();
         let router = Arc::new(ProxyRouter::new(&config.upstream_url));
         Self {
             config,
@@ -48,6 +49,7 @@ impl McpProxy {
         config: ProxyConfig,
         config_rx: watch::Receiver<GatewayConfig>,
     ) -> Self {
+        crate::telemetry::init_metrics();
         let router = Arc::new(ProxyRouter::with_config_receiver(
             &config.upstream_url,
             config_rx,

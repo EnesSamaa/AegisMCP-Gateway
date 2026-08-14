@@ -55,6 +55,10 @@ sha2          = { version = "0.10" }
 thiserror = { version = "2.0" }
 anyhow    = { version = "1.0" }
 
+# Observability — Prometheus metrics
+metrics                    = { version = "0.23" }
+metrics-exporter-prometheus = { version = "0.15" }
+
 # CLI
 clap = { version = "4.5", features = ["derive", "env"] }
 hex  = { version = "0.4" }

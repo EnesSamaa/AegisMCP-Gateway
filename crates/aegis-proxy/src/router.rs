@@ -4,6 +4,10 @@ use crate::{
     config::schema::GatewayConfig,
     error::ProxyError,
     sse::{apply_sse_headers, is_sse_request},
+    telemetry::{
+        extract_trace_context, inject_trace_headers, record_guardrail_latency, record_http_request,
+        record_security_violation, render_metrics, set_merkle_leaves,
+    },
 };
 use aegis_core::{
     AgentIdentity, JsonRpcRequest, McpSessionContext, RequestId, SessionId, ToolCall,
@@ -281,6 +285,27 @@ impl ProxyRouter {
             return Ok(resp);
         }
 
+        // Route GET /metrics — Prometheus text exposition
+        if req.uri().path() == "/metrics" {
+            // Refresh Merkle leaf gauge while we're here
+            if let Some(ledger) = &self.audit_ledger {
+                let n = ledger.len().await;
+                #[allow(clippy::cast_precision_loss)]
+                set_merkle_leaves(n as f64);
+            }
+            let payload = render_metrics();
+            let body = Full::new(Bytes::from(payload))
+                .map_err(|_| -> hyper::Error { unreachable!() })
+                .boxed();
+            return Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header(
+                    hyper::header::CONTENT_TYPE,
+                    "text/plain; version=0.0.4; charset=utf-8",
+                )
+                .body(body)?);
+        }
+
         // Route GET /v1/proofs/root  — return current Merkle root + leaf count
         if req.uri().path() == "/v1/proofs/root" {
             if let Some(ledger) = &self.audit_ledger {
@@ -353,6 +378,10 @@ impl ProxyRouter {
         // Check SSE
         let is_sse = is_sse_request(&req);
 
+        // Extract W3C TraceContext from incoming headers (generates root if absent)
+        let trace_ctx = extract_trace_context(req.headers());
+        debug!(trace_id = %trace_ctx.trace_id, span_id = %trace_ctx.span_id, "TraceContext extracted");
+
         // Dynamic route resolution — scoped block so watch::Ref is dropped before await points
         let upstream_target_url = {
             let req_path = req.uri().path();
@@ -408,6 +437,8 @@ impl ProxyRouter {
                         "auth",
                         "DENY_AUTH_FAILED",
                     );
+                    record_security_violation("auth_failed");
+                    record_http_request(req.method().as_str(), 401, "auth");
 
                     return Ok(Response::builder()
                         .status(StatusCode::UNAUTHORIZED)
@@ -437,6 +468,8 @@ impl ProxyRouter {
                     "rate_limit",
                     "DENY_RATE_LIMIT",
                 );
+                record_security_violation("rate_limit_exceeded");
+                record_guardrail_latency("rate_limiter", start_time.elapsed().as_secs_f64());
 
                 return Ok(Response::builder()
                     .status(StatusCode::OK)
@@ -648,6 +681,8 @@ impl ProxyRouter {
 
         debug!(target = %target_uri, is_sse = is_sse, "Forwarding request to upstream");
 
+        // Capture method string before parts.method is moved into the builder
+        let method_str = parts.method.as_str().to_string();
         let mut fwd_req = Request::builder().method(parts.method).uri(&target_uri);
 
         // Copy headers & inject translated upstream credential
@@ -673,6 +708,8 @@ impl ProxyRouter {
                     }
                 }
             }
+            // Inject W3C traceparent for distributed tracing propagation
+            inject_trace_headers(headers_mut, &trace_ctx);
         }
 
         let boxed_fwd_body = Full::new(body_bytes)
@@ -747,6 +784,8 @@ impl ProxyRouter {
             &req_method_name,
             "ALLOW",
         );
+        record_http_request(&method_str, resp_parts.status.as_u16(), &req_method_name);
+        record_guardrail_latency("total", start_time.elapsed().as_secs_f64());
 
         Ok(client_resp.body(boxed_resp_body)?)
     }
