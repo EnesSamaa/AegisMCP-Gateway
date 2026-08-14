@@ -1,0 +1,20 @@
+apiVersion: v2
+name: aegis-gateway
+description: Official enterprise Helm chart for AegisMCP-Gateway — Zero-Trust Security Reverse Proxy for Model Context Protocol (MCP)
+type: application
+version: 0.4.0
+appVersion: "0.4.0"
+keywords:
+  - aegis
+  - mcp
+  - gateway
+  - security
+  - zero-trust
+  - guardrails
+  - proxy
+home: https://github.com/EnesSamaa/AegisMCP-Gateway
+sources:
+  - https://github.com/EnesSamaa/AegisMCP-Gateway
+maintainers:
+  - name: EnesSamaa
+    url: https://github.com/EnesSamaa

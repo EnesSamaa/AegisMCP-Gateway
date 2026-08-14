@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aegis-system
+  labels:
+    app.kubernetes.io/name: aegis-gateway
+    app.kubernetes.io/part-of: aegis-mcp-gateway

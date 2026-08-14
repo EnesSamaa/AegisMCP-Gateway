@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aegis-gateway-config
+  namespace: aegis-system
+  labels:
+    app.kubernetes.io/name: aegis-gateway
+    app.kubernetes.io/component: proxy
+data:
+  aegis.yaml: |
+    server:
+      listen_addr: "0.0.0.0:8080"
+      default_timeout_ms: 30000
+    routes:
+      - path: "/mcp"
+        upstream_url: "http://upstream-mcp-service.aegis-system.svc.cluster.local:9090"
+        required_role: "default"
+        enabled: true
+      - path: "/sse"
+        upstream_url: "http://upstream-mcp-service.aegis-system.svc.cluster.local:9090"
+        required_role: "default"
+        enabled: true
+    roles:
+      - role: "admin"
+        allowed_tools:
+          - "*"
+        max_rate_limit: 10000
+      - role: "default"
+        allowed_tools:
+          - "read_file"
+          - "list_dir"
+        max_rate_limit: 1000
+    security:
+      enable_wasm_guardrails: true
+      enable_proof_logging: true
