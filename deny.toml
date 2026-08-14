@@ -1,17 +1,13 @@
 # ==============================================================================
-# cargo-deny configuration for AegisMCP-Gateway
-# Analyzes cargo dependency graphs to enforce license, advisory, and ban policies.
+# cargo-deny configuration for AegisMCP-Gateway (cargo-deny 0.16+ compliant)
 # ==============================================================================
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "none"
 yanked = "warn"
-notice = "warn"
+unmaintained = "none"
 ignore = []
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
