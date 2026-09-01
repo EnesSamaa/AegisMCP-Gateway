@@ -44,4 +44,4 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
-          arguments: --config deny.toml licenses bans sources
+          arguments: --config deny.toml
