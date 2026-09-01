@@ -9,6 +9,10 @@ on:
     # Run weekly on Monday at 00:00 UTC
     - cron: "0 0 * * 1"
 
+permissions:
+  contents: read
+  issues: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -40,4 +44,4 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
-          arguments: --config deny.toml
+          arguments: --config deny.toml licenses bans sources
