@@ -38,7 +38,7 @@ fn test_clean_prompt_payload_passes() {
     let safe = "Please summarize the main points of this document and list action items.";
     let res = detector.scan_payload(safe);
     assert_eq!(res.severity, InjectionSeverity::Safe);
-    assert!(res.matched_signatures.is_empty());
+    assert_eq!(res.matched_signatures, Vec::<String>::new());
 }
 
 #[test]

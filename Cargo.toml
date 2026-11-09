@@ -32,7 +32,7 @@ http-body-util = { version = "0.1" }
 tower          = { version = "0.5",  features = ["util"] }
 
 # WASM runtime
-wasmtime       = { version = "47", features = ["async", "component-model"] }
+wasmtime       = { version = "49", features = ["async", "component-model"] }
 wit-bindgen    = { version = "0.36", features = ["realloc"] }
 
 # Serialization & Config
